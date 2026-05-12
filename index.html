@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner de Provas</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 400px; margin: auto; background-color: #f9f9f9; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; }
+        input[type="text"] { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; font-size: 16px; border: none; border-radius: 4px; cursor: pointer; color: white; margin-bottom: 10px;}
+        .btn-blue { background-color: #007bff; }
+        .btn-green { background-color: #28a745; }
+        .btn-red { background-color: #dc3545; font-size: 14px; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        #status { padding: 10px; border-radius: 4px; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center;">Corretor Automático</h2>
+    
+    <div class="card" id="blocoTurma">
+        <label>1. Qual é a Turma?</label>
+        <input type="text" id="inputTurma" placeholder="Ex: 1º Ano A">
+        <button class="btn-blue" id="btnConfirmarTurma" onclick="travarTurma()">Confirmar Turma</button>
+        <button class="btn-red" id="btnEditarTurma" onclick="editarTurma()" style="display: none;">Trocar de Turma</button>
+    </div>
+
+    <div class="card" id="blocoAluno" style="display: none;">
+        <label>2. Nome do Aluno:</label>
+        <input type="text" id="inputAluno" placeholder="Digite o nome do aluno" oninput="liberarCamera()">
+    </div>
+
+    <div class="card" id="blocoCamera" style="display: none;">
+        <label>3. Escanear Gabarito:</label>
+        <input type="file" accept="image/*" capture="environment" id="inputCamera" style="margin-bottom: 15px; width: 100%;">
+        <button class="btn-green" id="btnEnviar" onclick="enviarFoto()">Enviar e Corrigir</button>
+    </div>
+
+    <div id="status"></div>
+
+    <script>
+        function travarTurma() {
+            const turma = document.getElementById('inputTurma').value.trim();
+            if (turma === "") {
+                alert("Por favor, digite o nome da turma primeiro.");
+                return;
+            }
+            
+            // Trava o campo turma
+            document.getElementById('inputTurma').disabled = true;
+            document.getElementById('btnConfirmarTurma').style.display = "none";
+            document.getElementById('btnEditarTurma').style.display = "block";
+            
+            // Libera o bloco do aluno
+            document.getElementById('blocoAluno').style.display = "block";
+            document.getElementById('inputAluno').focus();
+        }
+
+        function editarTurma() {
+            document.getElementById('inputTurma').disabled = false;
+            document.getElementById('btnConfirmarTurma').style.display = "block";
+            document.getElementById('btnEditarTurma').style.display = "none";
+            document.getElementById('blocoAluno').style.display = "none";
+            document.getElementById('blocoCamera').style.display = "none";
+            document.getElementById('inputAluno').value = "";
+        }
+
+        function liberarCamera() {
+            const aluno = document.getElementById('inputAluno').value.trim();
+            if (aluno !== "") {
+                document.getElementById('blocoCamera').style.display = "block";
+            } else {
+                document.getElementById('blocoCamera').style.display = "none";
+            }
+        }
+
+        function enviarFoto() {
+            const camera = document.getElementById('inputCamera');
+            const statusDiv = document.getElementById('status');
+            const btnEnviar = document.getElementById('btnEnviar');
+
+            if (camera.files.length === 0) {
+                alert("Por favor, tire a foto do gabarito primeiro.");
+                return;
+            }
+
+            const turma = document.getElementById('inputTurma').value.trim();
+            const aluno = document.getElementById('inputAluno').value.trim();
+            const foto = camera.files[0];
+
+            const formData = new FormData();
+            formData.append("imagem", foto);
+            formData.append("turma", turma); // Adicionando a Turma no pacote
+            formData.append("aluno", aluno); // Adicionando o Aluno no pacote
+
+            statusDiv.style.display = "block";
+            statusDiv.innerText = "Processando e enviando...";
+            statusDiv.style.background = "#fff3cd";
+            btnEnviar.disabled = true;
+
+            fetch("https://api-corretor-provas.onrender.com/processar_gabarito", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "erro") {
+                    statusDiv.innerHTML = `<strong>Falha:</strong> ${data.mensagem}`;
+                    statusDiv.style.background = "#f8d7da";
+                } else {
+                    statusDiv.innerHTML = `
+                        <strong>Sucesso!</strong> Notas salvas.<br>
+                        Aluno: ${aluno}<br>
+                        Respostas: ${data.respostas.join(", ")}
+                    `;
+                    statusDiv.style.background = "#d4edda";
+                    
+                    // Limpa o nome do aluno para o próximo da mesma turma
+                    document.getElementById('inputAluno').value = "";
+                    document.getElementById('inputCamera').value = "";
+                    document.getElementById('blocoCamera').style.display = "none";
+                    document.getElementById('inputAluno').focus();
+                }
+            })
+            .catch(error => {
+                statusDiv.innerText = "Erro de conexão com o servidor.";
+                statusDiv.style.background = "#f8d7da";
+                console.error(error);
+            })
+            .finally(() => {
+                btnEnviar.disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>

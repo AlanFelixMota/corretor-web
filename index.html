@@ -55,8 +55,22 @@
         let processandoEnvio = false;
 
         function dispararManual() {
+            const video = document.getElementById('video');
             const canvas = document.getElementById('canvasOculto');
-            dispararEEnviar(canvas);
+            
+            // Garante que o vídeo está rodando
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                // 1. "Bate a foto": Copia o tamanho exato da câmera e desenha no canvas
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // 2. Agora sim, envia o canvas preenchido para o servidor
+                dispararEEnviar(canvas);
+            } else {
+                alert("Aguarde a câmera focar e tente novamente.");
+            }
         }
 
         function travarTurma() {

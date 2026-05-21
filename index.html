@@ -202,7 +202,7 @@
                     if (data.status === "erro") {
                         statusDiv.innerHTML = `<strong>Falha:</strong> ${data.mensagem}<br>Reabrindo câmera...`;
                         statusDiv.style.background = "#f8d7da";
-                        setTimeout(() => { statusDiv.style.display = "none"; controlarCamera(); }, 10000);
+                        setTimeout(() => { statusDiv.style.display = "none"; controlarCamera(); }, 5000);
                     } else {
                         statusDiv.innerHTML = `
                             <strong>Sucesso Automático!</strong><br>

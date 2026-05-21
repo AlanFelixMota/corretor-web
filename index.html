@@ -3,22 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner de Provas</title>
+    <title>Scanner Inteligente de Provas</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 400px; margin: auto; background-color: #f9f9f9; }
+        body { font-family: sans-serif; padding: 20px; max-width: 400px; margin: auto; background-color: #f9f9f9; text-align: center; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        label { font-weight: bold; display: block; margin-bottom: 5px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; text-align: left; }
         input[type="text"] { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
         button { width: 100%; padding: 12px; font-size: 16px; border: none; border-radius: 4px; cursor: pointer; color: white; margin-bottom: 10px;}
         .btn-blue { background-color: #007bff; }
-        .btn-green { background-color: #28a745; }
         .btn-red { background-color: #dc3545; font-size: 14px; }
-        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        #cameraContainer { position: relative; width: 100%; max-width: 360px; margin: auto; display: none; border-radius: 8px; overflow: hidden; }
+        video { width: 100%; display: block; transform: scaleX(1); }
+        /* A moldura guia na tela */
+        .guia-scanner {
+            position: absolute; top: 10%; left: 10%; width: 80%; height: 80%;
+            border: 3px dashed #ffc107; border-radius: 4px; box-sizing: border-box;
+            transition: border-color 0.3s; pointer-events: none;
+        }
+        .guia-scanner.detectado { border-color: #28a745; border-style: solid; background-color: rgba(40, 167, 69, 0.1); }
         #status { padding: 10px; border-radius: 4px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
-    <h2 style="text-align: center;">Corretor Automático</h2>
+    <h2>Scanner Automático</h2>
     
     <div class="card" id="blocoTurma">
         <label>1. Qual é a Turma?</label>
@@ -29,109 +36,181 @@
 
     <div class="card" id="blocoAluno" style="display: none;">
         <label>2. Nome do Aluno:</label>
-        <input type="text" id="inputAluno" placeholder="Digite o nome do aluno" oninput="liberarCamera()">
+        <input type="text" id="inputAluno" placeholder="Digite o nome do aluno" oninput="controlarCamera()">
     </div>
 
-    <div class="card" id="blocoCamera" style="display: none;">
-        <label>3. Escanear Gabarito:</label>
-        <input type="file" accept="image/*" capture="environment" id="inputCamera" style="margin-bottom: 15px; width: 100%;">
-        <button class="btn-green" id="btnEnviar" onclick="enviarFoto()">Enviar e Corrigir</button>
+    <div id="cameraContainer">
+        <video id="video" autoplay playsinline></video>
+        <div class="guia-scanner" id="moldura"></div>
     </div>
+    <canvas id="canvasOculto" style="display: none;"></canvas>
 
     <div id="status"></div>
 
     <script>
+        let streamVideo = null;
+        let intervaloAnalise = null;
+        let framesEstaveis = 0;
+        let processandoEnvio = false;
+
         function travarTurma() {
             const turma = document.getElementById('inputTurma').value.trim();
-            if (turma === "") {
-                alert("Por favor, digite o nome da turma primeiro.");
-                return;
-            }
-            
-            // Trava o campo turma
+            if (turma === "") { alert("Digite o nome da turma."); return; }
             document.getElementById('inputTurma').disabled = true;
             document.getElementById('btnConfirmarTurma').style.display = "none";
             document.getElementById('btnEditarTurma').style.display = "block";
-            
-            // Libera o bloco do aluno
             document.getElementById('blocoAluno').style.display = "block";
             document.getElementById('inputAluno').focus();
         }
 
         function editarTurma() {
+            fecharCamera();
             document.getElementById('inputTurma').disabled = false;
             document.getElementById('btnConfirmarTurma').style.display = "block";
             document.getElementById('btnEditarTurma').style.display = "none";
             document.getElementById('blocoAluno').style.display = "none";
-            document.getElementById('blocoCamera').style.display = "none";
             document.getElementById('inputAluno').value = "";
         }
 
-        function liberarCamera() {
+        async function controlarCamera() {
             const aluno = document.getElementById('inputAluno').value.trim();
-            if (aluno !== "") {
-                document.getElementById('blocoCamera').style.display = "block";
-            } else {
-                document.getElementById('blocoCamera').style.display = "none";
+            const container = document.getElementById('cameraContainer');
+            
+            if (aluno !== "" && !streamVideo && !processandoEnvio) {
+                container.style.display = "block";
+                try {
+                    streamVideo = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+                        audio: false
+                    });
+                    document.getElementById('video').srcObject = streamVideo;
+                    // Inicia a análise matemática dos frames a cada 250ms (4 vezes por segundo)
+                    intervaloAnalise = setInterval(analisarFrame, 250);
+                } catch (err) {
+                    alert("Erro ao acessar a câmera traseira: " + err.message);
+                }
+            } else if (aluno === "") {
+                fecharCamera();
             }
         }
 
-        function enviarFoto() {
-            const camera = document.getElementById('inputCamera');
-            const statusDiv = document.getElementById('status');
-            const btnEnviar = document.getElementById('btnEnviar');
-
-            if (camera.files.length === 0) {
-                alert("Por favor, tire a foto do gabarito primeiro.");
-                return;
+        function fecharCamera() {
+            clearInterval(intervaloAnalise);
+            if (streamVideo) {
+                streamVideo.getTracks().forEach(track => track.stop());
+                streamVideo = null;
             }
+            document.getElementById('cameraContainer').style.display = "none";
+            document.getElementById('moldura').classList.remove('detectado');
+            framesEstaveis = 0;
+        }
 
+        function analisarFrame() {
+            if (processandoEnvio) return;
+
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvasOculto');
+            const ctx = canvas.getContext('2d');
+            const moldura = document.getElementById('moldura');
+
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+            // Define o tamanho do canvas oculto igual ao frame do vídeo
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Mapeia a região da moldura guia (centralizado em 80% da tela)
+            const xGuia = Math.floor(canvas.width * 0.1);
+            const yGuia = Math.floor(canvas.height * 0.1);
+            const wGuia = Math.floor(canvas.width * 0.8);
+            const hGuia = Math.floor(canvas.height * 0.8);
+
+            // Coleta amostras de luminosidade de dentro da folha (centro) e de fora (mesa)
+            const imgDataCentro = ctx.getImageData(canvas.width / 2, canvas.height / 2, 10, 10).data;
+            const imgDataMesaEsquerda = ctx.getImageData(Math.max(0, xGuia - 15), canvas.height / 2, 5, 5).data;
+            const imgDataMesaSuperior = ctx.getImageData(canvas.width / 2, Math.max(0, yGuia - 15), 5, 5).data;
+
+            // Função simples para calcular o brilho médio de uma amostra de pixels
+            const calcularBrilho = (data) => {
+                let soma = 0;
+                for (let i = 0; i < data.length; i += 4) {
+                    soma += (data[i] + data[i+1] + data[i+2]) / 3;
+                }
+                return soma / (data.length / 4);
+            };
+
+            const brilhoCentro = calcularBrilho(imgDataCentro); // Deve ser alto (papel branco)
+            const brilhoMesaEsq = calcularBrilho(imgDataMesaEsquerda); // Deve ser baixo (mesa escura)
+            const brilhoMesaSup = calcularBrilho(imgDataMesaSuperior); 
+
+            // HEURÍSTICA: Se o centro for claro (> 160) e as bordas externas forem escuras (diferença > 60)
+            if (brilhoCentro > 160 && (brilhoCentro - brilhoMesaEsq > 60) && (brilhoCentro - brilhoMesaSup > 60)) {
+                framesEstaveis++;
+                moldura.classList.add('detectado');
+                
+                // Se o enquadramento se mantiver estável por 3 frames seguidos (~1 segundo), dispara!
+                if (framesEstaveis >= 3) {
+                    dispararEEnviar(canvas);
+                }
+            } else {
+                framesEstaveis = 0;
+                moldura.classList.remove('detectado');
+            }
+        }
+
+        function dispararEEnviar(canvas) {
+            processandoEnvio = true;
+            fecharCamera(); // Para a câmera temporariamente para congelar o processo
+
+            if(navigator.vibrate) navigator.vibrate(100); // Vibração curta de sucesso
+
+            const statusDiv = document.getElementById('status');
             const turma = document.getElementById('inputTurma').value.trim();
             const aluno = document.getElementById('inputAluno').value.trim();
-            const foto = camera.files[0];
-
-            const formData = new FormData();
-            formData.append("imagem", foto);
-            formData.append("turma", turma); // Adicionando a Turma no pacote
-            formData.append("aluno", aluno); // Adicionando o Aluno no pacote
 
             statusDiv.style.display = "block";
-            statusDiv.innerText = "Processando e enviando...";
+            statusDiv.innerText = "Gabarito focado! Enviando para processamento...";
             statusDiv.style.background = "#fff3cd";
-            btnEnviar.disabled = true;
 
-            fetch("https://api-corretor-provas.onrender.com/processar_gabarito", {
-                method: "POST",
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === "erro") {
-                    statusDiv.innerHTML = `<strong>Falha:</strong> ${data.mensagem}`;
+            // Transforma o frame do canvas num arquivo blob PNG para envio
+            canvas.toBlob((blob) => {
+                const formData = new FormData();
+                formData.append("imagem", blob, "gabarito_auto.png");
+                formData.append("turma", turma);
+                formData.append("aluno", aluno);
+
+                fetch("https://api-corretor-provas.onrender.com/processar_gabarito", {
+                    method: "POST",
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === "erro") {
+                        statusDiv.innerHTML = `<strong>Falha:</strong> ${data.mensagem}<br>Reabrindo câmera...`;
+                        statusDiv.style.background = "#f8d7da";
+                        setTimeout(() => { statusDiv.style.display = "none"; controlarCamera(); }, 3000);
+                    } else {
+                        statusDiv.innerHTML = `
+                            <strong>Sucesso Automático!</strong><br>
+                            Aluno: ${aluno}<br>
+                            Respostas: ${data.respostas.join(", ")}
+                        `;
+                        statusDiv.style.background = "#d4edda";
+                        
+                        // Reseta para o próximo aluno
+                        document.getElementById('inputAluno').value = "";
+                        document.getElementById('inputAluno').focus();
+                    }
+                    processandoEnvio = false;
+                })
+                .catch(error => {
+                    statusDiv.innerText = "Erro de rede ao conectar à API.";
                     statusDiv.style.background = "#f8d7da";
-                } else {
-                    statusDiv.innerHTML = `
-                        <strong>Sucesso!</strong> Notas salvas.<br>
-                        Aluno: ${aluno}<br>
-                        Respostas: ${data.respostas.join(", ")}
-                    `;
-                    statusDiv.style.background = "#d4edda";
-                    
-                    // Limpa o nome do aluno para o próximo da mesma turma
-                    document.getElementById('inputAluno').value = "";
-                    document.getElementById('inputCamera').value = "";
-                    document.getElementById('blocoCamera').style.display = "none";
-                    document.getElementById('inputAluno').focus();
-                }
-            })
-            .catch(error => {
-                statusDiv.innerText = "Erro de conexão com o servidor.";
-                statusDiv.style.background = "#f8d7da";
-                console.error(error);
-            })
-            .finally(() => {
-                btnEnviar.disabled = false;
-            });
+                    processandoEnvio = false;
+                    setTimeout(() => { controlarCamera(); }, 3000);
+                });
+            }, "image/png");
         }
     </script>
 </body>

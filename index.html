@@ -188,56 +188,59 @@
 
         function dispararEEnviar(canvas) {
             processandoEnvio = true;
-            fecharCamera(); // Para a câmera temporariamente para congelar o processo
-
-            if(navigator.vibrate) navigator.vibrate(100); // Vibração curta de sucesso
+            fecharCamera(); 
+            
+            if(navigator.vibrate) navigator.vibrate(100); 
 
             const statusDiv = document.getElementById('status');
             const turma = document.getElementById('inputTurma').value.trim();
             const aluno = document.getElementById('inputAluno').value.trim();
 
             statusDiv.style.display = "block";
-            statusDiv.innerText = "Gabarito focado! Enviando para processamento...";
+            statusDiv.innerText = "Empacotando imagem (Base64)...";
             statusDiv.style.background = "#fff3cd";
 
-            // Transforma o frame do canvas num arquivo blob PNG para envio
-            canvas.toBlob((blob) => {
-                const formData = new FormData();
-                formData.append("imagem", blob, "gabarito_auto.png");
-                formData.append("turma", turma);
-                formData.append("aluno", aluno);
+            // Converte o canvas diretamente para uma string de texto Base64 (JPEG, 80% qualidade)
+            const imagemBase64 = canvas.toDataURL("image/jpeg", 0.8);
 
-                fetch("https://api-corretor-provas.onrender.com/processar_gabarito", {
-                    method: "POST",
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === "erro") {
-                        statusDiv.innerHTML = `<strong>Falha:</strong> ${data.mensagem}<br>Reabrindo câmera...`;
-                        statusDiv.style.background = "#f8d7da";
-                        setTimeout(() => { statusDiv.style.display = "none"; controlarCamera(); }, 5000);
-                    } else {
-                        statusDiv.innerHTML = `
-                            <strong>Sucesso Automático!</strong><br>
-                            Aluno: ${aluno}<br>
-                            Respostas: ${data.respostas.join(", ")}
-                        `;
-                        statusDiv.style.background = "#d4edda";
-                        
-                        // Reseta para o próximo aluno
-                        document.getElementById('inputAluno').value = "";
-                        document.getElementById('inputAluno').focus();
-                    }
-                    processandoEnvio = false;
-                })
-                .catch(error => {
-                    statusDiv.innerText = "Erro de rede ao conectar à API.";
+            const formData = new FormData();
+            formData.append("imagem_base64", imagemBase64); // Agora é um campo de texto normal!
+            formData.append("turma", turma);
+            formData.append("aluno", aluno);
+
+            fetch("https://api-corretor-provas.onrender.com/processar_gabarito", {
+                method: "POST",
+                body: formData
+            })
+            .then(async response => {
+                const isJson = response.headers.get('content-type')?.includes('application/json');
+                const data = isJson ? await response.json() : null;
+
+                if (!response.ok) {
+                    throw new Error(data ? data.mensagem : `Erro HTTP ${response.status}`);
+                }
+                return data;
+            })
+            .then(data => {
+                if (data.status === "erro") {
+                    statusDiv.innerHTML = `<strong>Falha na Leitura:</strong> ${data.mensagem}<br><small>Reabrindo câmera em 10s...</small>`;
                     statusDiv.style.background = "#f8d7da";
-                    processandoEnvio = false;
-                    setTimeout(() => { controlarCamera(); }, 3000);
-                });
-            }, "image/png");
+                    setTimeout(() => { statusDiv.style.display = "none"; controlarCamera(); }, 10000);
+                } else {
+                    statusDiv.innerHTML = `<strong>Sucesso!</strong><br>Aluno: ${aluno}<br>Respostas: ${data.respostas.join(", ")}`;
+                    statusDiv.style.background = "#d4edda";
+                    
+                    document.getElementById('inputAluno').value = "";
+                    document.getElementById('inputAluno').focus();
+                }
+                processandoEnvio = false;
+            })
+            .catch(error => {
+                statusDiv.innerHTML = `<strong>Erro na Rede:</strong> ${error.message}<br><small>Reabrindo câmera em 10s...</small>`;
+                statusDiv.style.background = "#f8d7da";
+                processandoEnvio = false;
+                setTimeout(() => { statusDiv.style.display = "none"; controlarCamera(); }, 10000);
+            });
         }
     </script>
 </body>

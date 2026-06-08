@@ -99,12 +99,13 @@
                 const startX = (img.width - menorLado) / 2;
                 const startY = (img.height - menorLado) / 2;
 
-                // 3. Define o canvas como um quadrado perfeito
-                canvas.width = menorLado;
-                canvas.height = menorLado;
+                // MUDANÇA CRÍTICA: Travar o tamanho do canvas para não sobrecarregar o servidor
+                const tamanhoMaximo = 1000; 
+                canvas.width = tamanhoMaximo;
+                canvas.height = tamanhoMaximo;
 
-                // 4. Desenha apenas a porção central quadrada da foto no canvas
-                ctx.drawImage(img, startX, startY, menorLado, menorLado, 0, 0, menorLado, menorLado);
+                // 4. Desenha a imagem cortando o centro E redimensionando-a para 1000x1000
+                ctx.drawImage(img, startX, startY, menorLado, menorLado, 0, 0, tamanhoMaximo, tamanhoMaximo);
 
                 // Mostra o resultado na tela
                 canvas.style.display = 'block';

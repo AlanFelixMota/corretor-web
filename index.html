@@ -2,134 +2,171 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner de Provas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scanner OMR Quadrado</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 400px; margin: auto; background-color: #f9f9f9; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        label { font-weight: bold; display: block; margin-bottom: 5px; }
-        input[type="text"] { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; font-size: 16px; border: none; border-radius: 4px; cursor: pointer; color: white; margin-bottom: 10px;}
-        .btn-blue { background-color: #007bff; }
-        .btn-green { background-color: #28a745; }
-        .btn-red { background-color: #dc3545; font-size: 14px; }
-        button:disabled { background-color: #cccccc; cursor: not-allowed; }
-        #status { padding: 10px; border-radius: 4px; margin-top: 10px; display: none; }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 500px;
+            margin: auto;
+            text-align: center;
+            background-color: #f8f9fa;
+        }
+        h2 { color: #333; }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        .btn-camera { background-color: #007bff; }
+        .btn-enviar { background-color: #28a745; display: none; }
+        
+        /* O segredo visual: Canvas forçado a ser um quadrado na tela */
+        #canvasQuadrado {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background-color: #e9ecef;
+            border: 3px dashed #007bff;
+            border-radius: 8px;
+            object-fit: cover;
+            display: none;
+            margin: 15px 0;
+        }
+
+        #status {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
-    <h2 style="text-align: center;">Corretor Automático</h2>
+
+    <h2>Correção Rápida</h2>
     
-    <div class="card" id="blocoTurma">
-        <label>1. Qual é a Turma?</label>
-        <input type="text" id="inputTurma" placeholder="Ex: 1º Ano A">
-        <button class="btn-blue" id="btnConfirmarTurma" onclick="travarTurma()">Confirmar Turma</button>
-        <button class="btn-red" id="btnEditarTurma" onclick="editarTurma()" style="display: none;">Trocar de Turma</button>
-    </div>
+    <input type="text" id="inputTurma" placeholder="Turma">
+    <input type="text" id="inputAluno" placeholder="Nome do Aluno">
 
-    <div class="card" id="blocoAluno" style="display: none;">
-        <label>2. Nome do Aluno:</label>
-        <input type="text" id="inputAluno" placeholder="Digite o nome do aluno" oninput="liberarCamera()">
-    </div>
+    <label for="cameraInput" class="btn btn-camera">📸 Tirar Foto (Mantenha no Centro)</label>
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
 
-    <div class="card" id="blocoCamera" style="display: none;">
-        <label>3. Escanear Gabarito:</label>
-        <input type="file" accept="image/*" capture="environment" id="inputCamera" style="margin-bottom: 15px; width: 100%;">
-        <button class="btn-green" id="btnEnviar" onclick="enviarFoto()">Enviar e Corrigir</button>
-    </div>
+    <canvas id="canvasQuadrado"></canvas>
+
+    <button id="btnEnviar" class="btn btn-enviar" onclick="enviarGabarito()">Enviar Gabarito</button>
 
     <div id="status"></div>
 
     <script>
-        function travarTurma() {
-            const turma = document.getElementById('inputTurma').value.trim();
-            if (turma === "") {
-                alert("Por favor, digite o nome da turma primeiro.");
-                return;
+        const cameraInput = document.getElementById('cameraInput');
+        const canvas = document.getElementById('canvasQuadrado');
+        const ctx = canvas.getContext('2d');
+        const btnEnviar = document.getElementById('btnEnviar');
+        const statusDiv = document.getElementById('status');
+
+        let processandoEnvio = false;
+
+        // Quando o usuário tira a foto...
+        cameraInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const img = new Image();
+            img.onload = function() {
+                // 1. Descobre qual é o menor lado da foto original
+                const menorLado = Math.min(img.width, img.height);
+                
+                // 2. Calcula as coordenadas para pegar o centro exato da imagem
+                const startX = (img.width - menorLado) / 2;
+                const startY = (img.height - menorLado) / 2;
+
+                // 3. Define o canvas como um quadrado perfeito
+                canvas.width = menorLado;
+                canvas.height = menorLado;
+
+                // 4. Desenha apenas a porção central quadrada da foto no canvas
+                ctx.drawImage(img, startX, startY, menorLado, menorLado, 0, 0, menorLado, menorLado);
+
+                // Mostra o resultado na tela
+                canvas.style.display = 'block';
+                btnEnviar.style.display = 'block';
+                statusDiv.style.display = 'none';
             }
-            
-            // Trava o campo turma
-            document.getElementById('inputTurma').disabled = true;
-            document.getElementById('btnConfirmarTurma').style.display = "none";
-            document.getElementById('btnEditarTurma').style.display = "block";
-            
-            // Libera o bloco do aluno
-            document.getElementById('blocoAluno').style.display = "block";
-            document.getElementById('inputAluno').focus();
-        }
+            img.src = URL.createObjectURL(file);
+        });
 
-        function editarTurma() {
-            document.getElementById('inputTurma').disabled = false;
-            document.getElementById('btnConfirmarTurma').style.display = "block";
-            document.getElementById('btnEditarTurma').style.display = "none";
-            document.getElementById('blocoAluno').style.display = "none";
-            document.getElementById('blocoCamera').style.display = "none";
-            document.getElementById('inputAluno').value = "";
-        }
-
-        function liberarCamera() {
-            const aluno = document.getElementById('inputAluno').value.trim();
-            if (aluno !== "") {
-                document.getElementById('blocoCamera').style.display = "block";
-            } else {
-                document.getElementById('blocoCamera').style.display = "none";
-            }
-        }
-
-        function enviarFoto() {
-            const camera = document.getElementById('inputCamera');
-            const statusDiv = document.getElementById('status');
-            const btnEnviar = document.getElementById('btnEnviar');
-
-            if (camera.files.length === 0) {
-                alert("Por favor, tire a foto do gabarito primeiro.");
-                return;
-            }
+        // Quando o usuário clica em enviar...
+        function enviarGabarito() {
+            if (processandoEnvio) return;
+            processandoEnvio = true;
 
             const turma = document.getElementById('inputTurma').value.trim();
             const aluno = document.getElementById('inputAluno').value.trim();
-            const foto = camera.files[0];
-
-            const formData = new FormData();
-            formData.append("imagem", foto);
-            formData.append("turma", turma); // Adicionando a Turma no pacote
-            formData.append("aluno", aluno); // Adicionando o Aluno no pacote
 
             statusDiv.style.display = "block";
-            statusDiv.innerText = "Processando e enviando...";
+            statusDiv.innerHTML = "<strong>Aguarde...</strong> Enviando imagem.";
             statusDiv.style.background = "#fff3cd";
             btnEnviar.disabled = true;
 
+            // Transforma o quadrado perfeito em um texto Base64 leve (JPEG a 80%)
+            const imagemBase64 = canvas.toDataURL("image/jpeg", 0.8);
+
+            const formData = new FormData();
+            formData.append("imagem_base64", imagemBase64);
+            formData.append("turma", turma);
+            formData.append("aluno", aluno);
+
+            // Substitua pela URL do seu servidor Render se necessário
             fetch("https://api-corretor-provas.onrender.com/processar_gabarito", {
                 method: "POST",
                 body: formData
             })
-            .then(response => response.json())
+            .then(async response => {
+                const isJson = response.headers.get('content-type')?.includes('application/json');
+                const data = isJson ? await response.json() : null;
+                if (!response.ok) throw new Error(data ? data.mensagem : `Erro HTTP ${response.status}`);
+                return data;
+            })
             .then(data => {
                 if (data.status === "erro") {
-                    statusDiv.innerHTML = `<strong>Falha:</strong> ${data.mensagem}`;
+                    statusDiv.innerHTML = `<strong>Falha na Leitura:</strong><br>${data.mensagem}`;
                     statusDiv.style.background = "#f8d7da";
                 } else {
-                    statusDiv.innerHTML = `
-                        <strong>Sucesso!</strong> Notas salvas.<br>
-                        Aluno: ${aluno}<br>
-                        Respostas: ${data.respostas.join(", ")}
-                    `;
+                    statusDiv.innerHTML = `<strong>Sucesso!</strong><br>Aluno: ${aluno}<br>Respostas: ${data.respostas.join(", ")}`;
                     statusDiv.style.background = "#d4edda";
                     
-                    // Limpa o nome do aluno para o próximo da mesma turma
+                    // Prepara para o próximo aluno
                     document.getElementById('inputAluno').value = "";
-                    document.getElementById('inputCamera').value = "";
-                    document.getElementById('blocoCamera').style.display = "none";
                     document.getElementById('inputAluno').focus();
+                    canvas.style.display = 'none';
+                    btnEnviar.style.display = 'none';
                 }
             })
             .catch(error => {
-                statusDiv.innerText = "Erro de conexão com o servidor.";
+                statusDiv.innerHTML = `<strong>Erro no Servidor:</strong><br>${error.message}`;
                 statusDiv.style.background = "#f8d7da";
-                console.error(error);
             })
             .finally(() => {
+                processandoEnvio = false;
                 btnEnviar.disabled = false;
             });
         }

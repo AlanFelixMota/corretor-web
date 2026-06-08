@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner OMR Quadrado</title>
+    <title>Correção Quadrada OMR</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -39,7 +39,7 @@
         .btn-camera { background-color: #007bff; }
         .btn-enviar { background-color: #28a745; display: none; }
         
-        /* O segredo visual: Canvas forçado a ser um quadrado na tela */
+        /* O canvas é forçado visualmente a ser um quadrado */
         #canvasQuadrado {
             width: 100%;
             aspect-ratio: 1 / 1;
@@ -62,17 +62,17 @@
 </head>
 <body>
 
-    <h2>Correção Rápida</h2>
+    <h2>Leitor de Gabarito</h2>
     
-    <input type="text" id="inputTurma" placeholder="Turma">
+    <input type="text" id="inputTurma" placeholder="Turma (ex: 3º Ano A)">
     <input type="text" id="inputAluno" placeholder="Nome do Aluno">
 
-    <label for="cameraInput" class="btn btn-camera">📸 Tirar Foto (Mantenha no Centro)</label>
+    <label for="cameraInput" class="btn btn-camera">📸 Capturar Gabarito</label>
     <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
 
     <canvas id="canvasQuadrado"></canvas>
 
-    <button id="btnEnviar" class="btn btn-enviar" onclick="enviarGabarito()">Enviar Gabarito</button>
+    <button id="btnEnviar" class="btn btn-enviar" onclick="enviarGabarito()">Enviar para Correção</button>
 
     <div id="status"></div>
 
@@ -85,29 +85,28 @@
 
         let processandoEnvio = false;
 
-        // Quando o usuário tira a foto...
+        // 1. Processamento da imagem após a foto ser tirada
         cameraInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             const img = new Image();
             img.onload = function() {
-                // 1. Descobre qual é o menor lado da foto original
+                // Descobre qual é o menor lado para fazer o corte quadrado perfeito
                 const menorLado = Math.min(img.width, img.height);
                 
-                // 2. Calcula as coordenadas para pegar o centro exato da imagem
+                // Calcula as coordenadas do centro
                 const startX = (img.width - menorLado) / 2;
                 const startY = (img.height - menorLado) / 2;
 
-                // MUDANÇA CRÍTICA: Travar o tamanho do canvas para não sobrecarregar o servidor
-                const tamanhoMaximo = 1000; 
-                canvas.width = tamanhoMaximo;
-                canvas.height = tamanhoMaximo;
+                // Reduz para 800x800 px para evitar o erro 413 e acelerar a rede
+                const tamanhoFinal = 800; 
+                canvas.width = tamanhoFinal;
+                canvas.height = tamanhoFinal;
 
-                // 4. Desenha a imagem cortando o centro E redimensionando-a para 1000x1000
-                ctx.drawImage(img, startX, startY, menorLado, menorLado, 0, 0, tamanhoMaximo, tamanhoMaximo);
+                // Corta o centro e redimensiona a imagem no canvas
+                ctx.drawImage(img, startX, startY, menorLado, menorLado, 0, 0, tamanhoFinal, tamanhoFinal);
 
-                // Mostra o resultado na tela
                 canvas.style.display = 'block';
                 btnEnviar.style.display = 'block';
                 statusDiv.style.display = 'none';
@@ -115,7 +114,7 @@
             img.src = URL.createObjectURL(file);
         });
 
-        // Quando o usuário clica em enviar...
+        // 2. Envio dos dados para o Python
         function enviarGabarito() {
             if (processandoEnvio) return;
             processandoEnvio = true;
@@ -128,48 +127,54 @@
             statusDiv.style.background = "#fff3cd";
             btnEnviar.disabled = true;
 
-            // Transforma o quadrado perfeito em um texto Base64 leve (JPEG a 80%)
-            const imagemBase64 = canvas.toDataURL("image/jpeg", 0.8);
-
-            const formData = new FormData();
-            formData.append("imagem_base64", imagemBase64);
-            formData.append("turma", turma);
-            formData.append("aluno", aluno);
-
-            // Substitua pela URL do seu servidor Render se necessário
-            fetch("https://api-corretor-provas.onrender.com/processar_gabarito", {
-                method: "POST",
-                body: formData
-            })
-            .then(async response => {
-                const isJson = response.headers.get('content-type')?.includes('application/json');
-                const data = isJson ? await response.json() : null;
-                if (!response.ok) throw new Error(data ? data.mensagem : `Erro HTTP ${response.status}`);
-                return data;
-            })
-            .then(data => {
-                if (data.status === "erro") {
-                    statusDiv.innerHTML = `<strong>Falha na Leitura:</strong><br>${data.mensagem}`;
-                    statusDiv.style.background = "#f8d7da";
-                } else {
-                    statusDiv.innerHTML = `<strong>Sucesso!</strong><br>Aluno: ${aluno}<br>Respostas: ${data.respostas.join(", ")}`;
-                    statusDiv.style.background = "#d4edda";
-                    
-                    // Prepara para o próximo aluno
-                    document.getElementById('inputAluno').value = "";
-                    document.getElementById('inputAluno').focus();
-                    canvas.style.display = 'none';
-                    btnEnviar.style.display = 'none';
+            // Transforma o canvas num arquivo físico (.jpg) diretamente no navegador
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    statusDiv.innerHTML = "Erro ao processar a imagem no celular.";
+                    processandoEnvio = false;
+                    return;
                 }
-            })
-            .catch(error => {
-                statusDiv.innerHTML = `<strong>Erro no Servidor:</strong><br>${error.message}`;
-                statusDiv.style.background = "#f8d7da";
-            })
-            .finally(() => {
-                processandoEnvio = false;
-                btnEnviar.disabled = false;
-            });
+
+                const formData = new FormData();
+                // O nome "imagem" aqui é o que o seu Python procura no request.files
+                formData.append("imagem", blob, "gabarito_quadrado.jpg");
+                formData.append("turma", turma);
+                formData.append("aluno", aluno);
+
+                // Substitua pela URL da sua API no Render se necessário
+                fetch("https://api-corretor-provas.onrender.com/processar_gabarito", {
+                    method: "POST",
+                    body: formData
+                })
+                .then(async response => {
+                    const isJson = response.headers.get('content-type')?.includes('application/json');
+                    const data = isJson ? await response.json() : null;
+                    if (!response.ok) throw new Error(data ? data.mensagem : `Erro HTTP ${response.status}`);
+                    return data;
+                })
+                .then(data => {
+                    if (data.status === "erro") {
+                        statusDiv.innerHTML = `<strong>Falha:</strong><br>${data.mensagem}`;
+                        statusDiv.style.background = "#f8d7da";
+                    } else {
+                        statusDiv.innerHTML = `<strong>Sucesso!</strong><br>Aluno: ${aluno}<br>Respostas: ${data.respostas.join(", ")}<br><small>${data.mensagem}</small>`;
+                        statusDiv.style.background = "#d4edda";
+                        
+                        document.getElementById('inputAluno').value = "";
+                        document.getElementById('inputAluno').focus();
+                        canvas.style.display = 'none';
+                        btnEnviar.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    statusDiv.innerHTML = `<strong>Erro no Servidor:</strong><br>${error.message}`;
+                    statusDiv.style.background = "#f8d7da";
+                })
+                .finally(() => {
+                    processandoEnvio = false;
+                    btnEnviar.disabled = false;
+                });
+            }, "image/jpeg", 0.8); // Qualidade de 80% (leve e nítido)
         }
     </script>
 </body>

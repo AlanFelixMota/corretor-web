@@ -102,7 +102,7 @@
             const selectTurma = document.getElementById("inputTurma");
             
             try {
-                const resposta = await fetch('alunos.txt');
+                const resposta = await fetch('alunos.txt', { cache: "no-store" });
                 if (!resposta.ok) throw new Error("Arquivo alunos.txt não encontrado");
                 
                 const texto = await resposta.text();

@@ -63,8 +63,13 @@
 <body>
 
     <h2>Leitor de Gabarito</h2>
+
+    <select id="inputDisciplina" style="width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; background-color: white;">
+        <option value="Filosofia">Filosofia</option>
+        <option value="Sociologia">Sociologia</option>
+    </select>
     
-    <input type="text" id="inputTurma" placeholder="Turma (ex: 3º Ano A)">
+    <input type="text" id="inputTurma" placeholder="Turma (ex: 3 Série A)">
     <input type="text" id="inputAluno" placeholder="Nome do Aluno">
 
     <label for="cameraInput" class="btn btn-camera">📸 Capturar Gabarito</label>
@@ -118,7 +123,8 @@
         function enviarGabarito() {
             if (processandoEnvio) return;
             processandoEnvio = true;
-
+            
+            const disciplina = document.getElementById('inputDisciplina').value; // Captura a disciplina
             const turma = document.getElementById('inputTurma').value.trim();
             const aluno = document.getElementById('inputAluno').value.trim();
 
@@ -138,6 +144,7 @@
                 const formData = new FormData();
                 // O nome "imagem" aqui é o que o seu Python procura no request.files
                 formData.append("imagem", blob, "gabarito_quadrado.jpg");
+                formData.append("disciplina", disciplina); // <--- NOVO
                 formData.append("turma", turma);
                 formData.append("aluno", aluno);
 

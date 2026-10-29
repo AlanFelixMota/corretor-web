@@ -1,0 +1,4 @@
+alunos.txt
+credentials*.json
+.env
+.env.*

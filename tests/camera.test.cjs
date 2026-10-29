@@ -33,21 +33,41 @@ test('exige estabilidade contínua e reinicia após movimento, perda ou pausa',(
  assert.equal(stable.update(result,0).ready,false);
  let state;for(let t=200;t<=1200;t+=200)state=stable.update(result,t);
  assert.equal(state.ready,true);
- const moved={...result,box:{...result.box,corners:result.box.corners.map(p=>({x:p.x+.04,y:p.y}))}};
+ const moved={...result,box:{...result.box,corners:result.box.corners.map(p=>({x:p.x+.16,y:p.y}))}};
  assert.equal(stable.update(moved,1400).progress,0);
  assert.equal(stable.update({box:null,gray:result.gray},1600).ready,false);
  for(let t=1800;t<=3000;t+=200)state=stable.update(result,t);
  assert.equal(state.ready,true);
- assert.equal(stable.update(result,4200).ready,false);
+ assert.equal(stable.update(result,6001).ready,false);
 });
-test('mudança de exposição e deslocamento gradual impedem captura',()=>{
+test('variação de exposição não reinicia; deslocamento contínuo impede captura',()=>{
  const original=detect(sheet()),stable=new Stability();
  stable.update(original,0);
  const exposed={...original,gray:original.gray.map(v=>Math.min(255,v+20))};
- assert.equal(stable.update(exposed,200).progress,0);
+ assert.ok(stable.update(exposed,200).progress>0);
  stable.reset();stable.update(original,0);
  for(let i=1;i<=6;i++) {
-  const moving={...original,box:{...original.box,corners:original.box.corners.map(p=>({x:p.x+i*.012,y:p.y}))}};
+  const moving={...original,box:{...original.box,corners:original.box.corners.map(p=>({x:p.x+i*.018,y:p.y}))}};
   assert.equal(stable.update(moving,i*200).ready,false);
  }
+});
+test('tremulação leve com mudança no fundo chega à captura automática',()=>{
+ const original=detect(sheet()),stable=new Stability();let state;
+ for(let i=0;i<7;i++) {
+  const tremor={...original,box:{...original.box,corners:original.box.corners.map(p=>({x:p.x+(i%2?.018:-.018),y:p.y+(i%3?.008:-.008)}))},gray:original.gray.map(v=>Math.min(255,v+(i%2?30:0)))};
+  state=stable.update(tremor,i*200);
+ }
+ assert.equal(state.ready,true);
+});
+test('celular com análise mais lenta também consegue capturar',()=>{
+ const original=detect(sheet()),stable=new Stability();let state;
+ for(let t=0;t<=3000;t+=1000)state=stable.update(original,t);
+ assert.equal(state.ready,true);
+});
+test('perda breve de borda não captura o quadro ausente nem apaga todo avanço',()=>{
+ const original=detect(sheet()),stable=new Stability();
+ stable.update(original,0);stable.update(original,200);
+ const lost=stable.update({box:null},400);assert.equal(lost.ready,false);assert.ok(lost.progress>0);
+ stable.update(original,600);assert.equal(stable.update(original,1000).ready,true);
+ assert.equal(stable.update({box:null},2000).progress,0);
 });

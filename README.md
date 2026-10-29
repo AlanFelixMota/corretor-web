@@ -1,11 +1,40 @@
-# Site do leitor de gabaritos — versão 2.2
+# Site do leitor de gabaritos — versão 2.3
+
+## Atualização 2.3
+
+A busca de alunos ignora acentos e permite mostrar apenas pendentes. As marcas
+de corrigido são consultadas na aba de respostas da planilha atual; ao zerá-la
+para a próxima unidade, use **Atualizar progresso da planilha**. Nenhuma escolha
+de avaliação foi adicionada.
+
+**Desmarcar na lista** faz o aluno voltar aos pendentes nesta sessão e neste
+navegador, sem apagar suas respostas. **Restaurar marcação** desfaz a ação.
+A desmarcação sobrevive às consultas e recargas da mesma sessão da aba; fecha-se
+ao sair da conta ou encerrar a sessão da aba. Uma nova gravação/edição dos registros
+daquele aluno invalida a exceção antiga. Para corrigir um registro feito com o
+aluno errado, confira e ajuste os dados no Sheets antes de gravar outra leitura.
+O sistema não faz correção ou exclusão automática de notas.
+
+Após uma gravação confirmada, o modo de sequência sugere o próximo pendente,
+mantendo disciplina, turma e quantidade. O nome fica destacado antes da câmera.
+É possível desativar a sugestão. A câmera só abre após tocar no botão, permitindo
+conferir a identificação; não há captura do próximo aluno durante a revisão.
+
+Se a API não confirmar a orientação, o site mantém a foto, oferece rotação e
+exige uma conferência explícita antes de tentar a leitura novamente. Duplas,
+rasuras e brancos continuam sujeitos à revisão do professor antes de gravar.
+
+Execute `npm ci --ignore-scripts` e `npm test` para a suíte completa (Node 24).
+As dependências npm são apenas para testes. O site publicado continua estático
+e sem bibliotecas de terceiros em tempo de execução. O GitHub Actions executa
+a suíte em pushes e pull requests; confira os testes antes de mesclar em `main`.
 
 ## Câmera automática (2.2)
 
 Selecione disciplina, turma, aluno e quantidade de questões. Toque em **Abrir
 câmera automática** e permita o acesso à câmera. Mostre o quadro inteiro com a
 primeira questão no topo. A borda aparece destacada quando é detectada. Após
-pelo menos 1,1 segundo e seis observações estáveis, o site captura um único quadro
+pelo menos 0,9 segundo e quatro observações com pequenas oscilações toleradas, o site captura um único quadro
 e inicia a leitura, sem abrir o aplicativo de câmera nem pedir confirmação da foto.
 Dependendo do celular, a estabilidade pode levar mais tempo.
 
@@ -44,6 +73,7 @@ Arquivos para o repositório `corretor-web`:
 - `style.css`
 - `app.js`
 - `camera.js`
+- `progresso.js`
 - `config.js`
 - `.gitignore`
 

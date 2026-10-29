@@ -69,20 +69,46 @@
   }
   class Stability {
     constructor(){this.reset();}
-    reset(){this.previous=null;this.anchor=null;this.since=null;this.count=0;this.lastTime=null;}
+    reset(){this.samples=[];this.lastValid=null;this.progress=0;}
     update(result,now){
-      const previous=this.previous,box=result.box;
-      let stable=Boolean(box&&previous?.box&&this.lastTime!==null&&now-this.lastTime<=900);
-      if(stable) {
-        const drift=Math.max(...box.corners.map((p,i)=>distance(p,previous.box.corners[i])));
-        let delta=0,n=0;for(let i=0;i<result.gray.length;i+=16){delta+=Math.abs(result.gray[i]-previous.gray[i]);n++;}
-        const totalDrift=Math.max(...box.corners.map((p,i)=>distance(p,this.anchor.corners[i])));
-        stable=drift<.018&&totalDrift<.025&&delta/Math.max(1,n)<7;
+      const box=result.box;
+      if(!box) {
+        // A single missed outline can occur during autofocus or hand tremor.
+        // Preserve brief progress, but never capture a frame without a box.
+        if(this.lastValid!==null&&now-this.lastValid>650)this.reset();
+        return {progress:this.progress,ready:false,phase:"searching"};
       }
-      if(!stable){this.since=box?now:null;this.count=box?1:0;this.anchor=box;}else this.count++;
-      this.previous=result;this.lastTime=now;
-      const progress=box&&this.since!==null?Math.min(1,(now-this.since)/1100):0;
-      return {progress,ready:progress>=1&&this.count>=6};
+      if(this.lastValid!==null&&now-this.lastValid>2000)this.reset();
+      this.lastValid=now;
+      this.samples.push({corners:box.corners,time:now});
+      this.samples=this.samples.filter(s=>now-s.time<=5000).slice(-6);
+
+      // Compare the outline over a short window. Raw pixel differences across
+      // the whole video made normal hand tremor and background changes reset
+      // the old counter, even when the answer box remained sharp and readable.
+      const median=values=>{const a=values.sort((a,b)=>a-b),n=a.length;return (a[(n-1)>>1]+a[n>>1])/2;};
+      const center=Array.from({length:4},(_,i)=>({
+        x:median(this.samples.map(s=>s.corners[i].x)),
+        y:median(this.samples.map(s=>s.corners[i].y))
+      }));
+      const spread=Math.max(...this.samples.flatMap(s=>s.corners.map((p,i)=>distance(p,center[i]))));
+      const split=Math.floor(this.samples.length/2);
+      const average=list=>Array.from({length:4},(_,i)=>({
+        x:list.reduce((sum,s)=>sum+s.corners[i].x,0)/list.length,
+        y:list.reduce((sum,s)=>sum+s.corners[i].y,0)/list.length
+      }));
+      let drift=0;
+      if(this.samples.length>=4) {
+        const before=average(this.samples.slice(0,split)),after=average(this.samples.slice(split));
+        drift=Math.max(...before.map((p,i)=>distance(p,after[i])));
+      }
+      if(spread>.045||drift>.03) {
+        this.samples=[{corners:box.corners,time:now}];this.progress=0;
+        return {progress:0,ready:false,phase:"moving"};
+      }
+      const elapsed=now-this.samples[0].time;
+      this.progress=Math.min(1,elapsed/900,(this.samples.length-1)/3);
+      return {progress:this.progress,ready:this.progress>=1,phase:"steady"};
     }
   }
   window.CorretorCamera={detect,Stability};

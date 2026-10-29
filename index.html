@@ -6,10 +6,11 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src https://api-corretor-provas.onrender.com http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Leitor de gabaritos</title>
-  <link rel="stylesheet" href="style.css?v=2.2">
+  <link rel="stylesheet" href="style.css?v=2.3">
   <script src="config.js" defer></script>
-  <script src="camera.js?v=2.2" defer></script>
-  <script src="app.js?v=2.2" defer></script>
+  <script src="camera.js?v=2.3" defer></script>
+  <script src="progresso.js?v=2.3" defer></script>
+  <script src="app.js?v=2.3" defer></script>
 </head>
 <body>
   <main>
@@ -35,14 +36,22 @@
         <fieldset id="identificacao">
           <div class="duas-colunas"><div><label for="disciplina">Disciplina</label><select id="disciplina" required></select></div><div><label for="quantidade">Questões objetivas</label><input id="quantidade" type="number" value="5" min="1" max="60" step="1" required></div></div>
           <label for="turma">Turma</label><select id="turma" required><option value="">Selecione a turma</option></select>
+          <label for="buscaAluno">Buscar aluno</label><input id="buscaAluno" type="search" placeholder="Digite parte do nome" autocomplete="off">
+          <label class="opcao"><input id="somentePendentes" type="checkbox"><span>Mostrar apenas pendentes</span></label>
           <label for="aluno">Aluno</label><select id="aluno" required><option value="">Selecione o aluno</option></select>
+          <p id="progressoTurma" class="ajuda" aria-live="polite">Selecione a turma para consultar o progresso.</p>
+          <button id="btnDesmarcar" class="secundario" type="button" disabled>Desmarcar na lista</button>
+          <p class="ajuda">Desmarcar altera apenas esta lista durante a sessão neste navegador. As respostas gravadas continuam na planilha.</p>
+          <label class="opcao"><input id="modoSequencia" type="checkbox" checked><span>Após salvar, selecionar o próximo aluno pendente</span></label>
         </fieldset>
         <button id="btnAtualizarAlunos" class="secundario" type="button">Atualizar lista de alunos</button>
+        <button id="btnAtualizarProgresso" class="secundario" type="button">Atualizar progresso da planilha</button>
         <p id="origemLista" class="ajuda" aria-live="polite">Cadastro de alunos por turma.</p>
       </section>
       <section class="card" aria-labelledby="tituloFoto">
         <p class="etiqueta">2 · APONTE A CÂMERA</p>
         <h2 id="tituloFoto">Mostre o quadro inteiro</h2>
+        <p id="alunoEmFoco" class="identidade">Selecione o aluno antes de abrir a câmera.</p>
         <p class="ajuda">Inclua a borda e as quatro quinas. Use boa iluminação e deixe a primeira questão no topo. O leitor aceita um único bloco vertical, com A, B, C, D e E da esquerda para a direita.</p>
         <button id="btnCamera" type="button">Abrir câmera automática</button>
         <div id="cameraPanel" hidden>
@@ -56,6 +65,7 @@
         <div id="fotoPanel" hidden>
           <canvas id="foto" aria-label="Foto do gabarito para conferir a orientação"></canvas>
           <div class="duas-colunas"><button id="girarEsquerda" class="secundario" type="button">↶ Girar à esquerda</button><button id="girarDireita" class="secundario" type="button">↷ Girar à direita</button></div>
+          <label id="orientacaoPanel" class="confirmacao" hidden><input id="orientacaoManual" type="checkbox"><span>Conferi: questão 1 no topo e alternativas A–E da esquerda para a direita.</span></label>
           <button id="btnLer" type="button">Ler marcações</button>
         </div>
       </section>
@@ -63,6 +73,7 @@
         <p class="etiqueta">3 · CONFIRA ANTES DE SALVAR</p>
         <h2 id="tituloRevisao">Revise as respostas</h2>
         <p id="identidadeRevisao" class="identidade"></p>
+        <p id="orientacaoRevisao" class="ajuda"></p>
         <p class="aviso">A leitura é uma sugestão. Confira todas as respostas na foto, inclusive as identificadas como branco ou marcação dupla.</p>
         <img id="imagemRevisao" alt="Quadro de respostas alinhado, com as bolhas detectadas e os números das questões">
         <p id="resumoRevisao" aria-live="polite"></p>
@@ -73,7 +84,7 @@
         <p class="ajuda">A foto não é gravada no servidor. A nota continua sendo calculada pela sua planilha.</p>
       </section>
     </div>
-    <footer>Leitor de gabaritos · versão 2.2</footer>
+    <footer>Leitor de gabaritos · versão 2.3</footer>
   </main>
 </body>
 </html>

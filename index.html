@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src https://api-corretor-provas.onrender.com http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src https://api-corretor-provas.onrender.com http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Leitor de gabaritos</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2.2">
   <script src="config.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="camera.js?v=2.2" defer></script>
+  <script src="app.js?v=2.2" defer></script>
 </head>
 <body>
   <main>
@@ -40,10 +41,17 @@
         <p id="origemLista" class="ajuda" aria-live="polite">Cadastro de alunos por turma.</p>
       </section>
       <section class="card" aria-labelledby="tituloFoto">
-        <p class="etiqueta">2 · FOTOGRAFE</p>
+        <p class="etiqueta">2 · APONTE A CÂMERA</p>
         <h2 id="tituloFoto">Mostre o quadro inteiro</h2>
         <p class="ajuda">Inclua a borda e as quatro quinas. Use boa iluminação e deixe a primeira questão no topo. O leitor aceita um único bloco vertical, com A, B, C, D e E da esquerda para a direita.</p>
-        <label class="arquivo" for="cameraInput">Tirar foto ou escolher imagem</label>
+        <button id="btnCamera" type="button">Abrir câmera automática</button>
+        <div id="cameraPanel" hidden>
+          <div class="camera-visor"><video id="cameraVideo" autoplay muted playsinline aria-label="Câmera ao vivo do gabarito"></video><canvas id="cameraOverlay" aria-hidden="true"></canvas></div>
+          <p id="cameraStatus" class="camera-status" role="status">Enquadre as quatro quinas do quadro.</p>
+          <progress id="cameraProgresso" max="1" value="0" aria-label="Estabilidade para captura automática"></progress>
+          <div class="duas-colunas"><button id="btnCapturar" type="button" class="secundario">Ler este enquadramento</button><button id="btnFecharCamera" type="button" class="secundario">Fechar câmera</button></div>
+        </div>
+        <label class="arquivo" for="cameraInput">Usar foto ou escolher imagem</label>
         <input id="cameraInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
         <div id="fotoPanel" hidden>
           <canvas id="foto" aria-label="Foto do gabarito para conferir a orientação"></canvas>
@@ -65,7 +73,7 @@
         <p class="ajuda">A foto não é gravada no servidor. A nota continua sendo calculada pela sua planilha.</p>
       </section>
     </div>
-    <footer>Leitor de gabaritos · versão 2.1</footer>
+    <footer>Leitor de gabaritos · versão 2.2</footer>
   </main>
 </body>
 </html>

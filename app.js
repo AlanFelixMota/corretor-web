@@ -3,7 +3,10 @@
   const $ = (id) => document.getElementById(id);
   const apiBase = window.CORRETOR_CONFIG.apiBase.replace(/\/$/, "");
   const state = { token: "", roster: {}, draft: null, busy: false, photoReady: false, uncertain: false };
-  const controls = ["btnLogin", "btnSair", "btnAtualizarAlunos", "cameraInput", "girarEsquerda", "girarDireita", "btnLer", "btnDescartar"];
+  const controls = ["btnLogin", "btnSair", "btnAtualizarAlunos", "cameraInput", "girarEsquerda", "girarDireita", "btnLer", "btnDescartar", "btnCamera", "btnCapturar"];
+  let cameraStream = null, cameraTimer = null, cameraGeneration = 0, cameraOpening = false;
+  const framingCanvas = document.createElement("canvas");
+  let stability = null;
 
   function message(text, type = "") {
     $("status").textContent = text;
@@ -13,12 +16,16 @@
 
   function syncControls() {
     for (const id of controls) $(id).disabled = state.busy;
-    $("identificacao").disabled = state.busy || Boolean(state.draft);
-    $("btnAtualizarAlunos").disabled = state.busy || Boolean(state.draft);
-    $("cameraInput").disabled = state.busy || Boolean(state.draft);
+    const cameraActive = Boolean(cameraStream) || cameraOpening;
+    $("identificacao").disabled = state.busy || Boolean(state.draft) || cameraActive;
+    $("btnAtualizarAlunos").disabled = state.busy || Boolean(state.draft) || cameraActive;
+    $("cameraInput").disabled = state.busy || Boolean(state.draft) || cameraActive;
+    $("btnCamera").disabled = state.busy || Boolean(state.draft) || cameraActive;
+    $("btnCapturar").disabled = state.busy || !cameraStream || !$("cameraVideo").videoWidth;
+    $("btnFecharCamera").disabled = !cameraActive;
     $("girarEsquerda").disabled = state.busy || Boolean(state.draft);
     $("girarDireita").disabled = state.busy || Boolean(state.draft);
-    $("btnLer").disabled = state.busy || Boolean(state.draft) || !state.photoReady;
+    $("btnLer").disabled = state.busy || Boolean(state.draft) || !state.photoReady || cameraActive;
     $("confirmado").disabled = state.busy;
     for (const select of document.querySelectorAll(".resposta select")) select.disabled = state.busy;
     const unresolved = [...document.querySelectorAll(".resposta select")].some((s) => s.value === "REVISAR");
@@ -73,6 +80,7 @@
   }
 
   function clearSession() {
+    stopCamera();
     state.token = "";
     state.roster = {};
     sessionStorage.removeItem("corretorSession");
@@ -139,6 +147,7 @@
   });
 
   $("cameraInput").addEventListener("change", () => run(async () => {
+    stopCamera();
     resetDraft();
     state.photoReady = false;
     $("fotoPanel").hidden = true;
@@ -213,8 +222,12 @@
     $("revisaoPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  $("btnLer").addEventListener("click", () => run(async () => {
+  function validateIdentity() {
     if (!$("aluno").value || !$("turma").value || !$("quantidade").checkValidity()) throw new Error("Selecione a turma, o aluno e a quantidade correta de questões objetivas.");
+  }
+
+  async function readPhoto() {
+    validateIdentity();
     const blob = await new Promise((resolve) => $("foto").toBlob(resolve, "image/jpeg", .9));
     if (!blob) throw new Error("Não consegui preparar a foto. Capture novamente.");
     const form = new FormData();
@@ -224,7 +237,107 @@
     const data = await request("/processar_gabarito", { method: "POST", body: form });
     showReview(data);
     message("Leitura pronta. Confira as respostas abaixo antes de salvar.");
-  }));
+  }
+  $("btnLer").addEventListener("click", () => run(readPhoto));
+
+  function stopCamera() {
+    cameraGeneration++;
+    clearTimeout(cameraTimer); cameraTimer = null;
+    if (cameraStream) for (const track of cameraStream.getTracks()) track.stop();
+    cameraStream = null; cameraOpening = false; stability = null;
+    $("cameraVideo").srcObject = null;
+    $("cameraPanel").hidden = true;
+    $("cameraProgresso").value = 0;
+  }
+
+  async function captureCamera() {
+    if (!cameraStream || state.busy || state.draft) return;
+    const video = $("cameraVideo");
+    if (video.readyState < 2 || !video.videoWidth) return;
+    await run(async () => {
+      validateIdentity();
+      const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+      $("foto").width = Math.round(video.videoWidth * scale);
+      $("foto").height = Math.round(video.videoHeight * scale);
+      $("foto").getContext("2d").drawImage(video, 0, 0, $("foto").width, $("foto").height);
+      state.photoReady = true;
+      $("fotoPanel").hidden = false;
+      stopCamera();
+      await readPhoto();
+    });
+  }
+
+  function scanCamera(generation) {
+    if (generation !== cameraGeneration || !cameraStream || document.hidden) return;
+    const video = $("cameraVideo");
+    try {
+      if (video.readyState >= 2 && video.videoWidth && !state.busy) {
+        const scale = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight));
+        framingCanvas.width = Math.round(video.videoWidth * scale);
+        framingCanvas.height = Math.round(video.videoHeight * scale);
+        const context = framingCanvas.getContext("2d", { willReadFrequently: true });
+        context.drawImage(video, 0, 0, framingCanvas.width, framingCanvas.height);
+        const result = window.CorretorCamera.detect(context.getImageData(0, 0, framingCanvas.width, framingCanvas.height));
+        const status = stability.update(result, performance.now());
+        const overlay = $("cameraOverlay");
+        overlay.width = framingCanvas.width; overlay.height = framingCanvas.height;
+        const pen = overlay.getContext("2d");
+        if (result.box) {
+          pen.beginPath();
+          result.box.corners.forEach((p, i) => pen[i ? "lineTo" : "moveTo"](p.x * overlay.width, p.y * overlay.height));
+          pen.closePath(); pen.strokeStyle = status.progress > 0 ? "#30e6aa" : "#ffd15a"; pen.lineWidth = 3; pen.stroke();
+        }
+        $("cameraProgresso").value = status.progress;
+        $("cameraStatus").textContent = result.box ? "Quadro detectado. Mantenha o celular parado para ler…" : "Mostre a borda inteira, aproxime e ajuste o foco. Primeira questão no topo.";
+        $("btnCapturar").disabled = false;
+        if (status.ready) { void captureCamera(); return; }
+      }
+      cameraTimer = setTimeout(() => scanCamera(generation), 180);
+    } catch (_) {
+      stopCamera(); syncControls();
+      message("Não consegui analisar a câmera neste navegador. Use a opção de foto abaixo.", "erro");
+    }
+  }
+
+  $("btnCamera").addEventListener("click", async () => {
+    if (state.busy || state.draft || cameraStream || cameraOpening) return;
+    try { validateIdentity(); } catch (error) { message(error.message, "erro"); return; }
+    if (!navigator.mediaDevices?.getUserMedia || !window.CorretorCamera) {
+      message("A câmera ao vivo não está disponível neste navegador. Abra o site no Chrome ou Safari, ou use uma foto.", "erro"); return;
+    }
+    cameraOpening = true;
+    const generation = ++cameraGeneration;
+    $("cameraPanel").hidden = false;
+    $("cameraStatus").textContent = "Permita o acesso à câmera no navegador…";
+    $("cameraPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    syncControls();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      if (generation !== cameraGeneration || document.hidden) { stream.getTracks().forEach(t => t.stop()); return; }
+      cameraStream = stream; cameraOpening = false;
+      for (const track of stream.getVideoTracks()) track.addEventListener("ended", () => {
+        if (generation === cameraGeneration) { stopCamera(); syncControls(); message("A câmera foi interrompida. Toque em Abrir câmera para tentar novamente."); }
+      });
+      $("cameraVideo").srcObject = stream;
+      await $("cameraVideo").play();
+      if (generation !== cameraGeneration) return;
+      resetPhoto();
+      stability = new window.CorretorCamera.Stability();
+      syncControls();
+      message("Aponte para o quadro do aluno selecionado. A captura e a leitura serão automáticas.");
+      scanCamera(generation);
+    } catch (error) {
+      if (generation !== cameraGeneration) return;
+      stopCamera(); syncControls();
+      message(error.name === "NotAllowedError" ? "Permita o acesso à câmera nas configurações do navegador ou use uma foto." : "Não consegui abrir a câmera. Feche outros aplicativos que a estejam usando ou use uma foto.", "erro");
+    }
+  });
+  $("btnFecharCamera").addEventListener("click", () => { stopCamera(); syncControls(); message("Câmera fechada."); });
+  $("btnCapturar").addEventListener("click", () => { void captureCamera(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && (cameraStream || cameraOpening)) { stopCamera(); syncControls(); message("Câmera pausada ao sair da página. Toque em Abrir câmera para continuar."); }
+  });
+  window.addEventListener("pagehide", stopCamera);
 
   $("confirmado").addEventListener("change", syncControls);
   $("btnSalvar").addEventListener("click", () => run(async () => {

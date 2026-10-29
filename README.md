@@ -1,4 +1,35 @@
-# Site do leitor de gabaritos — versão 2.0
+# Site do leitor de gabaritos — versão 2.2
+
+## Câmera automática (2.2)
+
+Selecione disciplina, turma, aluno e quantidade de questões. Toque em **Abrir
+câmera automática** e permita o acesso à câmera. Mostre o quadro inteiro com a
+primeira questão no topo. A borda aparece destacada quando é detectada. Após
+pelo menos 1,1 segundo e seis observações estáveis, o site captura um único quadro
+e inicia a leitura, sem abrir o aplicativo de câmera nem pedir confirmação da foto.
+Dependendo do celular, a estabilidade pode levar mais tempo.
+
+O enquadramento é analisado localmente, em uma imagem reduzida. Apenas a foto
+capturada é enviada à API autenticada; o vídeo não é transmitido. O detector de
+borda não identifica o aluno nem garante orientação ou leitura correta. A API
+continua validando o quadro e a quantidade de bolhas, e o professor revisa as
+respostas e confirma antes de gravar no Sheets.
+
+A identificação fica bloqueada enquanto a câmera está aberta. A câmera fecha
+após a captura, ao sair da página, ao encerrar a sessão ou ao tocar em Fechar
+câmera. Para a próxima prova, selecione o próximo aluno e abra a câmera de novo.
+Não há repetição automática de requisições caso a leitura falhe: a foto permanece
+para girar e tentar novamente. Também há **Ler este enquadramento** e o fluxo
+tradicional **Usar foto ou escolher imagem**.
+
+O acesso ao vídeo requer HTTPS e permissão do navegador. Em caso de bloqueio,
+use o Chrome/Safari diretamente ou a opção de foto. A detecção é uma heurística
+de borda, contraste, detalhe e estabilidade, sem bibliotecas externas; precisa
+ser conferida em celulares reais com o gabarito impresso.
+
+Os testes do detector não precisam de instalação de pacotes: execute
+`node --test tests/camera.test.cjs` usando uma versão recente do Node apenas no
+ambiente de desenvolvimento. O site publicado continua sem compilação ou npm.
 
 ## Atualização 2.1
 
@@ -12,6 +43,7 @@ Arquivos para o repositório `corretor-web`:
 - `index.html`
 - `style.css`
 - `app.js`
+- `camera.js`
 - `config.js`
 - `.gitignore`
 

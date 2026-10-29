@@ -2,3 +2,4 @@ alunos.txt
 credentials*.json
 .env
 .env.*
+node_modules/

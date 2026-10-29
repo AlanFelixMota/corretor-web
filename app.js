@@ -2,8 +2,9 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const apiBase = window.CORRETOR_CONFIG.apiBase.replace(/\/$/, "");
-  const state = { token: "", roster: {}, draft: null, busy: false, photoReady: false, uncertain: false };
-  const controls = ["btnLogin", "btnSair", "btnAtualizarAlunos", "cameraInput", "girarEsquerda", "girarDireita", "btnLer", "btnDescartar", "btnCamera", "btnCapturar"];
+  const state = { token: "", roster: {}, draft: null, busy: false, photoReady: false, uncertain: false, progressAvailable: false };
+  const progress = new window.CorretorProgresso(sessionStorage);
+  const controls = ["btnLogin", "btnSair", "btnAtualizarAlunos", "btnAtualizarProgresso", "cameraInput", "girarEsquerda", "girarDireita", "btnLer", "btnDescartar", "btnCamera", "btnCapturar"];
   let cameraStream = null, cameraTimer = null, cameraGeneration = 0, cameraOpening = false;
   const framingCanvas = document.createElement("canvas");
   let stability = null;
@@ -19,6 +20,8 @@
     const cameraActive = Boolean(cameraStream) || cameraOpening;
     $("identificacao").disabled = state.busy || Boolean(state.draft) || cameraActive;
     $("btnAtualizarAlunos").disabled = state.busy || Boolean(state.draft) || cameraActive;
+    $("btnAtualizarProgresso").disabled = state.busy || Boolean(state.draft) || cameraActive || !$("turma").value;
+    $("btnDesmarcar").disabled = state.busy || Boolean(state.draft) || cameraActive || !state.progressAvailable || !progress.assinatura($("disciplina").value, $("turma").value, $("aluno").value);
     $("cameraInput").disabled = state.busy || Boolean(state.draft) || cameraActive;
     $("btnCamera").disabled = state.busy || Boolean(state.draft) || cameraActive;
     $("btnCapturar").disabled = state.busy || !cameraStream || !$("cameraVideo").videoWidth;
@@ -27,9 +30,11 @@
     $("girarDireita").disabled = state.busy || Boolean(state.draft);
     $("btnLer").disabled = state.busy || Boolean(state.draft) || !state.photoReady || cameraActive;
     $("confirmado").disabled = state.busy;
+    $("orientacaoManual").disabled = state.busy || Boolean(state.draft);
     for (const select of document.querySelectorAll(".resposta select")) select.disabled = state.busy;
     const unresolved = [...document.querySelectorAll(".resposta select")].some((s) => s.value === "REVISAR");
     $("btnSalvar").disabled = state.busy || !state.draft || unresolved || !$("confirmado").checked || state.uncertain;
+    $("btnSalvar").textContent = $("modoSequencia").checked ? "Salvar na planilha e próximo aluno" : "Salvar na planilha";
   }
 
   async function request(path, options = {}, authenticated = true) {
@@ -44,6 +49,7 @@
       if (!response.ok) {
         const error = new Error(data.mensagem || `Erro HTTP ${response.status}`);
         error.status = response.status;
+        error.code = data.codigo;
         if (authenticated && response.status === 401) clearSession();
         throw error;
       }
@@ -70,6 +76,7 @@
     $("imagemRevisao").removeAttribute("src");
     $("identidadeRevisao").textContent = "";
     $("confirmado").checked = false;
+    $("orientacaoRevisao").textContent = "";
   }
 
   function resetPhoto() {
@@ -77,12 +84,16 @@
     $("foto").width = $("foto").height = 1;
     $("cameraInput").value = "";
     $("fotoPanel").hidden = true;
+    $("orientacaoManual").checked = false;
+    $("orientacaoPanel").hidden = true;
   }
 
   function clearSession() {
     stopCamera();
     state.token = "";
     state.roster = {};
+    state.progressAvailable = false;
+    progress.limpar();
     sessionStorage.removeItem("corretorSession");
     resetDraft(); resetPhoto();
     $("turma").replaceChildren(new Option("Selecione a turma", ""));
@@ -92,6 +103,35 @@
     $("appPanel").hidden = true;
     $("loginPanel").hidden = false;
     $("senha").value = "";
+    $("buscaAluno").value = "";
+    $("progressoTurma").textContent = "Selecione a turma para consultar o progresso.";
+    $("alunoEmFoco").textContent = "Selecione o aluno antes de abrir a câmera.";
+  }
+
+  function renderStudents(selected = $("aluno").value) {
+    const d = $("disciplina").value, t = $("turma").value, names = state.roster[t] || [];
+    const filtered = progress.filtrar(names, d, t, $("buscaAluno").value, $("somentePendentes").checked);
+    $("aluno").replaceChildren(new Option("Selecione o aluno", ""), ...filtered.map(a => new Option((progress.corrigido(d,t,a) ? "✓ " : "") + a, a)));
+    if (filtered.includes(selected)) $("aluno").value = selected;
+    const done = names.filter(a => progress.corrigido(d,t,a)).length;
+    $("progressoTurma").textContent = t ? `${done} de ${names.length} marcados como corrigidos · ${names.length-done} pendentes` + (state.progressAvailable ? "" : " · progresso não confirmado; atualize a consulta") : "Selecione a turma para consultar o progresso.";
+    const aluno = $("aluno").value;
+    $("alunoEmFoco").textContent = aluno ? `${d} · ${t} · ${aluno}` : "Selecione o aluno antes de abrir a câmera.";
+    $("btnDesmarcar").textContent = aluno && progress.corrigido(d,t,aluno) ? "Desmarcar na lista" : "Restaurar marcação";
+    syncControls();
+  }
+
+  async function loadProgress() {
+    const d = $("disciplina").value, t = $("turma").value;
+    state.progressAvailable = false;
+    if (!d || !t) { renderStudents(); return; }
+    try {
+      const data = await request(`/progresso?${new URLSearchParams({ disciplina:d, turma:t })}`);
+      if (d !== $("disciplina").value || t !== $("turma").value) return;
+      progress.atualizar(d, t, data.registros);
+      state.progressAvailable = true;
+      renderStudents();
+    } catch (error) { renderStudents(); throw error; }
   }
 
   async function loadRoster(force = false) {
@@ -110,6 +150,8 @@
     $("origemLista").textContent = data.aviso || "Cadastro consultado na aba Alunos. Edite a planilha e toque em Atualizar lista para buscar as mudanças.";
     $("appPanel").hidden = false;
     $("loginPanel").hidden = true;
+    state.progressAvailable = false;
+    renderStudents();
     return data;
   }
 
@@ -117,7 +159,8 @@
     if (state.draft) return;
     message("Consultando o cadastro de alunos…");
     const data = await loadRoster(true);
-    message(data.aviso || "Lista atualizada. Confira a turma e o aluno antes de ler a prova.", data.aviso ? "" : "sucesso");
+    try { await loadProgress(); } catch (error) { message("Lista de alunos atualizada. " + error.message); return; }
+    message(data.aviso || "Lista e progresso atualizados. Confira a turma e o aluno antes de ler a prova.", data.aviso ? "" : "sucesso");
   }));
 
   $("loginForm").addEventListener("submit", (event) => {
@@ -143,12 +186,29 @@
   });
 
   $("turma").addEventListener("change", () => {
-    $("aluno").replaceChildren(new Option("Selecione o aluno", ""), ...(state.roster[$("turma").value] || []).map((a) => new Option(a, a)));
+    $("buscaAluno").value = "";
+    state.progressAvailable = false; renderStudents("");
+    void run(loadProgress);
+  });
+  $("disciplina").addEventListener("change", () => { state.progressAvailable = false; renderStudents(); void run(loadProgress); });
+  $("aluno").addEventListener("change", () => renderStudents());
+  $("buscaAluno").addEventListener("input", () => renderStudents());
+  $("somentePendentes").addEventListener("change", () => renderStudents());
+  $("modoSequencia").addEventListener("change", syncControls);
+  $("btnAtualizarProgresso").addEventListener("click", () => run(async () => { await loadProgress(); message("Progresso consultado na planilha atual.", "sucesso"); }));
+  $("btnDesmarcar").addEventListener("click", () => {
+    if (state.busy || state.draft || cameraStream || cameraOpening || !state.progressAvailable) return;
+    const d = $("disciplina").value, t = $("turma").value, a = $("aluno").value;
+    if (!progress.assinatura(d,t,a)) return;
+    const marcado = progress.corrigido(d,t,a);
+    progress.alternar(d,t,a); renderStudents(a);
+    message(marcado ? `${a} voltou para os pendentes nesta sessão. As respostas continuam na planilha; confira-as antes de registrar outra leitura.` : `Marcação de ${a} restaurada.`, "sucesso");
   });
 
   $("cameraInput").addEventListener("change", () => run(async () => {
     stopCamera();
     resetDraft();
+    $("orientacaoManual").checked = false; $("orientacaoPanel").hidden = true;
     state.photoReady = false;
     $("fotoPanel").hidden = true;
     const file = $("cameraInput").files[0];
@@ -183,6 +243,7 @@
     context.rotate(direction * Math.PI / 2);
     context.drawImage(copy, -copy.width / 2, -copy.height / 2);
     context.setTransform(1, 0, 0, 1, 0, 0);
+    $("orientacaoManual").checked = false;
   }
   $("girarEsquerda").addEventListener("click", () => rotate(-1));
   $("girarDireita").addEventListener("click", () => rotate(1));
@@ -200,6 +261,7 @@
     state.draft = data;
     state.uncertain = false;
     $("identidadeRevisao").textContent = `${data.disciplina} · ${data.turma} · ${data.aluno}`;
+    $("orientacaoRevisao").textContent = data.orientacao?.origem === "manual" ? "Orientação conferida manualmente. Confira a ordem das questões e alternativas na imagem." : data.orientacao?.rotacao ? "A imagem foi girada automaticamente pela posição da numeração. Confira a orientação na imagem." : "Confira a questão 1 no topo e as alternativas A–E da esquerda para a direita.";
     $("imagemRevisao").src = data.imagem_revisao;
     $("listaRespostas").replaceChildren();
     for (const detail of data.detalhes) {
@@ -223,7 +285,8 @@
   }
 
   function validateIdentity() {
-    if (!$("aluno").value || !$("turma").value || !$("quantidade").checkValidity()) throw new Error("Selecione a turma, o aluno e a quantidade correta de questões objetivas.");
+    const quantidade = Number($("quantidade").value);
+    if (!$("aluno").value || !$("turma").value || !Number.isInteger(quantidade) || quantidade < 1 || quantidade > 60) throw new Error("Selecione a turma, o aluno e a quantidade correta de questões objetivas.");
   }
 
   async function readPhoto() {
@@ -232,9 +295,15 @@
     if (!blob) throw new Error("Não consegui preparar a foto. Capture novamente.");
     const form = new FormData();
     for (const id of ["disciplina", "turma", "aluno", "quantidade"]) form.append(id, $(id).value);
+    form.append("orientacao_confirmada", String($("orientacaoManual").checked));
     form.append("imagem", blob, "gabarito.jpg");
     message("Lendo as marcações… Nenhuma resposta foi gravada ainda.");
-    const data = await request("/processar_gabarito", { method: "POST", body: form });
+    let data;
+    try { data = await request("/processar_gabarito", { method: "POST", body: form }); }
+    catch (error) {
+      if (error.code === "ORIENTACAO_DUVIDOSA") { $("orientacaoPanel").hidden = false; $("fotoPanel").scrollIntoView({ behavior:"smooth", block:"start" }); }
+      throw error;
+    }
     showReview(data);
     message("Leitura pronta. Confira as respostas abaixo antes de salvar.");
   }
@@ -288,7 +357,7 @@
           pen.closePath(); pen.strokeStyle = status.progress > 0 ? "#30e6aa" : "#ffd15a"; pen.lineWidth = 3; pen.stroke();
         }
         $("cameraProgresso").value = status.progress;
-        $("cameraStatus").textContent = result.box ? "Quadro detectado. Mantenha o celular parado para ler…" : "Mostre a borda inteira, aproxime e ajuste o foco. Primeira questão no topo.";
+        $("cameraStatus").textContent = !result.box ? "Mostre a borda inteira, aproxime e ajuste o foco. Primeira questão no topo." : status.phase === "moving" ? "Quadro detectado. Reduza um pouco o movimento para capturar…" : "Quadro detectado. Preparando captura automática; pequenos movimentos são aceitos…";
         $("btnCapturar").disabled = false;
         if (status.ready) { void captureCamera(); return; }
       }
@@ -354,9 +423,14 @@
       throw error;
     }
     if (data.status !== "sucesso") throw new Error("A gravação não foi confirmada. Confira a planilha.");
-    const name = state.draft.aluno;
-    resetDraft(); resetPhoto(); $("aluno").value = "";
-    message(`${data.mensagem}\nAluno: ${name}\nRespostas: ${answers.join(", ")}\nSelecione o próximo aluno.`, "sucesso");
+    const saved = state.draft, name = saved.aluno;
+    progress.salvo(saved.disciplina, saved.turma, name, saved.leitura_id);
+    resetDraft(); resetPhoto(); $("buscaAluno").value = "";
+    let aviso = "";
+    try { await loadProgress(); } catch (_) { aviso = " O progresso não pôde ser atualizado; consulte novamente quando a conexão voltar."; }
+    const next = $("modoSequencia").checked ? progress.proximo(state.roster[saved.turma] || [], saved.disciplina, saved.turma, name) : "";
+    renderStudents(next);
+    message(`${data.mensagem}\nAluno: ${name}\nRespostas: ${answers.join(", ")}\n${next ? `Próximo sugerido: ${next}. Confira a identificação e toque em Abrir câmera.` : "Selecione outro aluno ou atualize o progresso para conferir a turma."}${aviso}`, "sucesso");
     $("aluno").focus();
     $("status").scrollIntoView({ behavior: "smooth", block: "start" });
   }));

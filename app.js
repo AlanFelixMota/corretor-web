@@ -338,6 +338,7 @@
     if (document.hidden && (cameraStream || cameraOpening)) { stopCamera(); syncControls(); message("Câmera pausada ao sair da página. Toque em Abrir câmera para continuar."); }
   });
   window.addEventListener("pagehide", stopCamera);
+  window.addEventListener("pageshow", syncControls);
 
   $("confirmado").addEventListener("change", syncControls);
   $("btnSalvar").addEventListener("click", () => run(async () => {

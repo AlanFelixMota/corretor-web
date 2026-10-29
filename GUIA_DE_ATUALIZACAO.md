@@ -1,5 +1,17 @@
 # Atualizar o corretor de provas — versão 2.0
 
+## Publicação assistida (2.0.1)
+
+A publicação assistida preserva o comando existente `gunicorn app:app` e pode
+usar as variáveis privadas `GOOGLE_CREDENTIALS_JSON` e `ALUNOS_TEXTO` no Render,
+em vez dos dois Secret Files. A conta Google e o formato da lista são os mesmos.
+Essas variáveis têm prioridade sobre os arquivos. A senha inicial gerada fica
+em `CORRETOR_PASSWORD` no painel do serviço, em Environment. O conteúdo desses
+valores não deve ir para o repositório.
+
+A foto real fornecida foi lida como A, A, A, A, A, de acordo com a conferência
+visual. As marcações duplas e rasuras ainda precisam de exemplos reais diversos.
+
 Esta é uma versão preparada para teste. Ela ainda precisa ser avaliada com seu
 gabarito impresso e fotografias reais. Seus repositórios e serviços online não
 foram alterados automaticamente.
@@ -88,7 +100,7 @@ pip install -r requirements.txt
 **Start Command**
 
 ```bash
-gunicorn -c gunicorn.conf.py wsgi:app
+gunicorn app:app
 ```
 
 Mantenha uma instância da API. A versão foi testada em Python 3.12 e usa APIs de

@@ -3,7 +3,7 @@
   const $ = (id) => document.getElementById(id);
   const apiBase = window.CORRETOR_CONFIG.apiBase.replace(/\/$/, "");
   const state = { token: "", roster: {}, draft: null, busy: false, photoReady: false, uncertain: false };
-  const controls = ["btnLogin", "btnSair", "cameraInput", "girarEsquerda", "girarDireita", "btnLer", "btnDescartar"];
+  const controls = ["btnLogin", "btnSair", "btnAtualizarAlunos", "cameraInput", "girarEsquerda", "girarDireita", "btnLer", "btnDescartar"];
 
   function message(text, type = "") {
     $("status").textContent = text;
@@ -14,6 +14,7 @@
   function syncControls() {
     for (const id of controls) $(id).disabled = state.busy;
     $("identificacao").disabled = state.busy || Boolean(state.draft);
+    $("btnAtualizarAlunos").disabled = state.busy || Boolean(state.draft);
     $("cameraInput").disabled = state.busy || Boolean(state.draft);
     $("girarEsquerda").disabled = state.busy || Boolean(state.draft);
     $("girarDireita").disabled = state.busy || Boolean(state.draft);
@@ -79,19 +80,37 @@
     $("turma").replaceChildren(new Option("Selecione a turma", ""));
     $("aluno").replaceChildren(new Option("Selecione o aluno", ""));
     $("disciplina").replaceChildren();
+    $("origemLista").textContent = "Cadastro de alunos por turma.";
     $("appPanel").hidden = true;
     $("loginPanel").hidden = false;
     $("senha").value = "";
   }
 
-  async function loadRoster() {
-    const data = await request("/alunos");
+  async function loadRoster(force = false) {
+    const previous = { disciplina: $("disciplina").value, turma: $("turma").value, aluno: $("aluno").value };
+    const data = await request("/alunos" + (force ? "?atualizar=1" : ""));
     state.roster = data.turmas;
     $("disciplina").replaceChildren(...data.disciplinas.map((d) => new Option(d, d)));
+    if (data.disciplinas.includes(previous.disciplina)) $("disciplina").value = previous.disciplina;
     $("turma").replaceChildren(new Option("Selecione a turma", ""), ...Object.keys(state.roster).map((t) => new Option(t, t)));
+    $("aluno").replaceChildren(new Option("Selecione o aluno", ""));
+    if (Object.hasOwn(state.roster, previous.turma)) {
+      $("turma").value = previous.turma;
+      $("aluno").replaceChildren(new Option("Selecione o aluno", ""), ...state.roster[previous.turma].map((a) => new Option(a, a)));
+      if (state.roster[previous.turma].includes(previous.aluno)) $("aluno").value = previous.aluno;
+    }
+    $("origemLista").textContent = data.aviso || "Cadastro consultado na aba Alunos. Edite a planilha e toque em Atualizar lista para buscar as mudanças.";
     $("appPanel").hidden = false;
     $("loginPanel").hidden = true;
+    return data;
   }
+
+  $("btnAtualizarAlunos").addEventListener("click", () => run(async () => {
+    if (state.draft) return;
+    message("Consultando o cadastro de alunos…");
+    const data = await loadRoster(true);
+    message(data.aviso || "Lista atualizada. Confira a turma e o aluno antes de ler a prova.", data.aviso ? "" : "sucesso");
+  }));
 
   $("loginForm").addEventListener("submit", (event) => {
     event.preventDefault();

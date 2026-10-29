@@ -1,5 +1,12 @@
 # Site do leitor de gabaritos — versão 2.0
 
+## Atualização 2.1
+
+O botão **Atualizar lista de alunos** lê a aba **Alunos** da planilha de
+Filosofia. Leia `CADASTRO_DE_ALUNOS.md` para organizar cada turma em uma coluna.
+A atualização preserva seleções válidas e limpa alunos removidos. O botão fica
+bloqueado durante a revisão de uma prova. Nenhuma senha foi alterada.
+
 Arquivos para o repositório `corretor-web`:
 
 - `index.html`

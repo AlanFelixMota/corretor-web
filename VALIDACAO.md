@@ -4,8 +4,15 @@ Data: 29/10/2026. Ambiente: Python 3.12.14.
 
 ## Resultado
 
-**33 testes automatizados aprovados**, em 5,74 segundos, na suíte
+**46 testes automatizados aprovados** nas suítes
 `api-corretor/tests/test_corretor.py`.
+
+`api-corretor/tests/test_cadastro.py` cobre leitura do cadastro por colunas,
+lacunas, cabeçalhos ambíguos, nomes duplicados, cadastro vazio, cache, atualização
+forçada, falha do Google e troca de cadastro sem reiniciar a API. Também verifica
+que a aba Alunos não recebe gravações de respostas quando é movida para o início.
+O teste de interface com DOM simulado confirmou a preservação de seleções válidas,
+a limpeza de alunos removidos e o bloqueio da atualização durante a revisão.
 
 Cobertura principal:
 
@@ -26,6 +33,14 @@ Cobertura principal:
 - Timeout após o envio não retorna sucesso e bloqueia novo append cego.
 - Upload excessivo, aluno desconhecido, leitura expirada e configuração sem
   proteção rejeitados.
+- Configuração privada por variáveis de ambiente para lista de alunos e
+  conta de serviço Google, sem depender de arquivos no repositório.
+- Inicialização real pelo comando já existente `gunicorn app:app`, usando dados
+  fictícios: `/health` respondeu com status `ok` e versão `2.0.1`.
+
+Uma fotografia real do modelo fornecido pelo usuário foi processada pelo leitor
+e retornou A, A, A, A, A, coincidindo com a conferência visual das cinco questões.
+Isso valida essa amostra, sem medir a precisão geral em rasuras e marcas duplas.
 
 ## Interface
 

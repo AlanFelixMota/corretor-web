@@ -27,3 +27,10 @@ test('turmas e disciplinas independentes; próximo pula corrigidos e não repete
  p.salvo('Filosofia','A','CARLA','id');assert.equal(p.proximo(['ANA','BIA','CARLA'],'Filosofia','A','CARLA'),'');
  p.limpar();assert.equal(p.corrigido('Filosofia','A','ANA'),false);
 });
+test('assinatura devolvida ao salvar permite desmarcar sem nova leitura da planilha',()=>{
+ const {p}=setup();p.atualizar('Filosofia','A',{});
+ p.salvo('Filosofia','A','ANA','rascunho','assinatura-real');p.alternar('Filosofia','A','ANA');
+ assert.equal(p.corrigido('Filosofia','A','ANA'),false);
+ p.atualizar('Filosofia','A',{ANA:'assinatura-real'});assert.equal(p.corrigido('Filosofia','A','ANA'),false);
+ p.atualizar('Filosofia','A',{ANA:'nova-resposta'});assert.equal(p.corrigido('Filosofia','A','ANA'),true);
+});

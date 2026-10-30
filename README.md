@@ -1,4 +1,32 @@
-# Site do leitor de gabaritos — versão 2.3
+# Site do leitor de gabaritos — versão 2.4
+
+## Atualização 2.4
+
+O fluxo mostra uma etapa por vez: selecionar alunos, capturar, revisar. A
+configuração da turma é recolhida depois da seleção, e opções de progresso
+ficam em um painel secundário. Na revisão, a confirmação e o botão de salvar
+ficam na parte inferior da tela. A foto pode ser recolhida ou ampliada.
+
+O checkbox **Prova em dupla** abre uma segunda lista da mesma turma, excluindo
+o primeiro aluno. Só é possível iniciar com dois nomes distintos. Uma revisão
+serve aos dois; depois do sucesso ambos recebem a marca de corrigido. O segundo
+nome é limpo para a próxima prova, para não reutilizar uma dupla por engano.
+
+**Preencher manualmente** está disponível antes da foto e depois de uma falha.
+Se o servidor retornar uma falha de reconhecimento (422, exceto orientação),
+a revisão manual é aberta automaticamente com a foto capturada, quando houver.
+Nenhuma resposta é presumida: todas começam pendentes e o professor precisa
+escolher A–E, BRANCO ou DUPLA, conferir os alunos e confirmar a gravação.
+Falha de rede não inicia automaticamente um preenchimento manual.
+
+Após salvar, o site atualiza o progresso com a assinatura devolvida pelo
+servidor, sem aguardar outra leitura do Sheets. A consulta explícita em
+**Atualizar listas** continua disponível para mudanças feitas na planilha.
+As assinaturas agora se referem ao lançamento mais recente de cada aluno.
+Nenhuma coluna foi adicionada às planilhas, e as notas continuam no Sheets.
+
+Esta versão não foi publicada automaticamente: conferir os Checks e liberar
+API 2.4 antes do site. Ver VALIDACAO_2_4.md para resultados e limites do teste.
 
 ## Atualização 2.3
 

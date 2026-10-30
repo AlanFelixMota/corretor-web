@@ -11,7 +11,7 @@ function setup() {
  w.URL.createObjectURL=()=> 'blob:imagem-ficticia';w.URL.revokeObjectURL=()=>{};
  w.Image=class {constructor(){this.naturalWidth=1000;this.naturalHeight=1000;}decode(){return Promise.resolve();}};
  let clock=0,detect=false,frames=0,stopped=0,allowCamera;
- const calls=[],records={},settings={readError:null,saveError:null,progressError:false,pendingPermission:false};
+ const calls=[],records={},drafts=new Map(),settings={readError:null,readErrorStatus:422,saveError:null,progressError:false,pendingPermission:false};
  const stream=()=>{const track={stop(){stopped++;},addEventListener(){}};return {getTracks:()=>[track],getVideoTracks:()=>[track]};};
  Object.defineProperty(w.document,'hidden',{value:false,configurable:true});
  Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:()=>settings.pendingPermission?new Promise(r=>allowCamera=r):Promise.resolve(stream())}});
@@ -19,6 +19,7 @@ function setup() {
  Object.defineProperties($('cameraVideo'),{videoWidth:{value:1080},videoHeight:{value:1920},readyState:{value:4}});
  w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){},translate(){},rotate(){},setTransform(){},getImageData(){return {};},beginPath(){},moveTo(){},lineTo(){},closePath(){},stroke(){}});
  w.HTMLCanvasElement.prototype.toBlob=cb=>cb(new w.Blob(['imagem'],{type:'image/jpeg'}));
+ w.HTMLCanvasElement.prototype.toDataURL=()=> 'data:image/jpeg;base64,AA==';
  const nativeTimeout=w.setTimeout.bind(w);
  w.setTimeout=(cb,delay,...args)=>nativeTimeout(()=>{if(delay===180)clock+=200;cb(...args);},delay===180?0:delay);
  Object.defineProperty(w.performance,'now',{value:()=>clock});
@@ -27,12 +28,21 @@ function setup() {
   if(url.endsWith('/login'))data={token:'token-ficticio',expires_at:Date.now()/1000+3600};
   else if(url.includes('/alunos'))data={turmas:{'Turma A':['ALUNO UM','ALUNO DOIS','JOÃO']},disciplinas:['Filosofia','Sociologia'],aviso:''};
   else if(url.includes('/progresso?')){if(settings.progressError){status=503;data={mensagem:'Progresso indisponível'};}else data={registros:{...records}};}
-  else if(url.endsWith('/processar_gabarito')){
-   if(settings.readError){status=422;data=settings.readError;}
-   else data={leitura_id:'rascunho-'+calls.length,disciplina:options.body.get('disciplina'),turma:options.body.get('turma'),aluno:options.body.get('aluno'),imagem_revisao:'data:image/jpeg;base64,AA==',orientacao:{origem:'numeracao',rotacao:0},detalhes:[{questao:1,resposta:'A',motivo:'Uma marca'},{questao:2,resposta:'REVISAR',motivo:'Rasura'},{questao:3,resposta:'DUPLA',motivo:'Duas marcas'},{questao:4,resposta:'BRANCO',motivo:'Sem marca'},{questao:5,resposta:'E',motivo:'Uma marca'}]};
+  else if(url.endsWith('/processar_gabarito')||url.endsWith('/leitura_manual')){
+   const manual=url.endsWith('/leitura_manual');
+   if(!manual&&settings.readError){status=settings.readErrorStatus;data=settings.readError;}
+   else {
+    const id=manual?JSON.parse(options.body):{disciplina:options.body.get('disciplina'),turma:options.body.get('turma'),aluno:options.body.get('aluno'),alunos:JSON.parse(options.body.get('alunos')||'null'),quantidade:Number(options.body.get('quantidade'))};
+    data={leitura_id:'rascunho-'+calls.length,disciplina:id.disciplina,turma:id.turma,aluno:id.aluno,alunos:id.alunos||[id.aluno],modo:manual?'manual':'camera',imagem_revisao:manual?null:'data:image/jpeg;base64,AA==',orientacao:{origem:manual?'manual':'numeracao',rotacao:0},detalhes:Array.from({length:id.quantidade},(_,i)=>({questao:i+1,resposta:manual?'REVISAR':['A','REVISAR','DUPLA','BRANCO','E'][i]||'A',motivo:manual?'Preenchimento manual':'Confira a prova'}))};
+    drafts.set(data.leitura_id,data);
+   }
   }else if(url.endsWith('/salvar_gabarito')){
    if(settings.saveError){status=settings.saveError;data={mensagem:'Gravação não confirmada'};}
-   else {records[$('aluno').value]='hash-'+calls.length;data={status:'sucesso',mensagem:'Respostas salvas no Google Sheets.'};}
+   else {
+    const draft=drafts.get(JSON.parse(options.body).leitura_id),registros={};
+    for(const aluno of draft.alunos){records[aluno]='hash-'+calls.length+'-'+aluno;registros[aluno]=records[aluno];}
+    data={status:'sucesso',mensagem:draft.alunos.length===2?'Respostas salvas para os dois alunos.':'Respostas salvas no Google Sheets.',registros};
+   }
   }else if(url.endsWith('/logout'))data={status:'sucesso'};else throw new Error('URL inesperada '+url);
   return {ok:status===200,status,json:async()=>data};
  };
@@ -101,12 +111,12 @@ test('orientação duvidosa exige conferência; falha de gravação preserva rev
  }finally{h.close();}
 });
 
-test('modo manual não escolhe próximo aluno; falha de progresso não repete gravação',async()=>{
+test('sem sugestão de próximo, salvar não espera outra consulta de progresso',async()=>{
  const h=setup(),{$,calls,change}=h;try{
  await pause();await h.login();await change('turma','Turma A');await change('aluno','ALUNO UM');await change('modoSequencia',false);await h.photo();$('btnLer').click();await pause();await change('q2','C');await change('confirmado',true);
  assert.equal($('btnSalvar').textContent,'Salvar na planilha');
- h.settings.progressError=true;$('btnSalvar').click();await pause();
- assert.equal($('aluno').value,'');assert.equal($('status').className,'sucesso');assert.match($('status').textContent,/progresso não pôde/);
+ const antes=calls.filter(c=>c.url.includes('/progresso?')).length;h.settings.progressError=true;$('btnSalvar').click();await pause();
+ assert.equal($('aluno').value,'');assert.equal($('status').className,'sucesso');assert.equal(calls.filter(c=>c.url.includes('/progresso?')).length,antes);
  assert.equal(calls.filter(c=>c.url.endsWith('/salvar_gabarito')).length,1);
  assert.equal($('btnDesmarcar').disabled,true);
  }finally{h.close();}
@@ -117,5 +127,60 @@ test('quantidade inválida é bloqueada antes de enviar a foto',async()=>{
  await pause();await h.login();await change('turma','Turma A');await change('aluno','ALUNO UM');await h.photo();
  $('quantidade').value='0';$('btnLer').click();await pause();
  assert.equal(calls.filter(c=>c.url.endsWith('/processar_gabarito')).length,0);assert.match($('status').textContent,/quantidade correta/);
+ }finally{h.close();}
+});
+
+test('preencher manualmente sem foto abre revisão vazia e exige todas as respostas',async()=>{
+ const h=setup(),{$,calls,change}=h;try{
+ await pause();await h.login();await change('turma','Turma A');await change('aluno','ALUNO UM');
+ $('btnManual').click();await pause();
+ assert.equal($('selecaoPanel').hidden,true);assert.equal($('capturaPanel').hidden,true);assert.equal($('revisaoPanel').hidden,false);
+ assert.equal($('detalheFoto').hidden,true);assert.equal($('q1').value,'REVISAR');
+ await change('confirmado',true);assert.equal($('btnSalvar').disabled,true);
+ for(let i=1;i<=5;i++)await change('q'+i,['A','B','C','D','E'][i-1]);
+ assert.equal($('confirmado').checked,false);await change('confirmado',true);$('btnSalvar').click();await pause();
+ assert.equal(calls.filter(c=>c.url.endsWith('/salvar_gabarito')).length,1);assert.equal($('selecaoPanel').hidden,false);assert.equal($('revisaoPanel').hidden,true);
+ assert.equal(calls.filter(c=>c.url.endsWith('/processar_gabarito')).length,0);
+ }finally{h.close();}
+});
+
+test('mancha que impede reconhecimento abre preenchimento manual com a foto',async()=>{
+ const h=setup(),{$,calls,change}=h;try{
+ await pause();await h.login();await change('turma','Turma A');await change('aluno','ALUNO UM');await h.photo();
+ h.settings.readError={codigo:'LEITURA_INVALIDA',mensagem:'Não confirmei a grade'};$('btnLer').click();await pause();
+ assert.equal($('revisaoPanel').hidden,false);assert.equal($('detalheFoto').hidden,false);assert.equal($('q1').value,'REVISAR');assert.match($('orientacaoRevisao').textContent,/Preenchimento manual/);
+ assert.equal(calls.filter(c=>c.url.endsWith('/leitura_manual')).length,1);assert.equal(calls.filter(c=>c.url.endsWith('/salvar_gabarito')).length,0);
+ }finally{h.close();}
+});
+
+test('falha de rede não vira uma leitura manual automaticamente',async()=>{
+ const h=setup(),{$,calls,change}=h;try{
+ await pause();await h.login();await change('turma','Turma A');await change('aluno','ALUNO UM');await h.photo();
+ h.settings.readError={mensagem:'Servidor indisponível'};h.settings.readErrorStatus=500;$('btnLer').click();await pause();
+ assert.equal($('revisaoPanel').hidden,true);assert.equal(calls.filter(c=>c.url.endsWith('/leitura_manual')).length,0);assert.equal($('btnManualFoto').disabled,false);
+ }finally{h.close();}
+});
+
+test('dupla identifica dois alunos, faz uma revisão e marca ambos após um envio',async()=>{
+ const h=setup(),{$,calls,change}=h;try{
+ await pause();await h.login();await change('turma','Turma A');await change('aluno','ALUNO UM');await change('emDupla',true);
+ assert.equal($('segundoAlunoPanel').hidden,false);assert.ok(![...$('aluno2').options].some(o=>o.value==='ALUNO UM'));
+ $('btnManual').click();await pause();assert.equal(calls.filter(c=>c.url.endsWith('/leitura_manual')).length,0);
+ await change('aluno2','ALUNO DOIS');$('btnManual').click();await pause();assert.match($('identidadeRevisao').textContent,/ALUNO UM e ALUNO DOIS/);
+ assert.equal($('identificacao').disabled,true);assert.equal($('btnSalvar').textContent,'Salvar para os dois');
+ for(let i=1;i<=5;i++)await change('q'+i,'A');await change('confirmado',true);$('btnSalvar').click();await pause();
+ assert.equal(calls.filter(c=>c.url.endsWith('/salvar_gabarito')).length,1);assert.match($('progressoTurma').textContent,/2 de 3/);assert.equal($('aluno').value,'JOÃO');assert.equal($('aluno2').value,'');
+ assert.equal($('selecaoPanel').hidden,false);assert.equal($('capturaPanel').hidden,true);assert.equal($('revisaoPanel').hidden,true);
+ }finally{h.close();}
+});
+
+test('seleção, câmera e revisão não ficam empilhadas na tela',async()=>{
+ const h=setup(),{$,w,change}=h;try{
+ await pause();await h.login();await change('turma','Turma A');await change('aluno','ALUNO UM');
+ assert.equal($('configTurma').open,false);$('btnComecarCamera').click();await pause();
+ assert.equal($('capturaPanel').hidden,false);assert.equal($('selecaoPanel').hidden,true);assert.equal($('revisaoPanel').hidden,true);
+ $('btnFecharCamera').click();$('btnTrocarAlunos').click();assert.equal($('selecaoPanel').hidden,false);
+ $('btnManual').click();await pause();assert.equal(w.document.body.classList.contains('em-revisao'),true);
+ $('btnDescartar').click();assert.equal(w.document.body.classList.contains('em-revisao'),false);assert.equal($('selecaoPanel').hidden,false);
  }finally{h.close();}
 });

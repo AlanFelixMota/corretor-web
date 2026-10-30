@@ -6,85 +6,79 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src https://api-corretor-provas.onrender.com http://localhost:5000 http://127.0.0.1:5000; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Leitor de gabaritos</title>
-  <link rel="stylesheet" href="style.css?v=2.3">
+  <link rel="stylesheet" href="style.css?v=2.4">
   <script src="config.js" defer></script>
-  <script src="camera.js?v=2.3" defer></script>
-  <script src="progresso.js?v=2.3" defer></script>
-  <script src="app.js?v=2.3" defer></script>
+  <script src="camera.js?v=2.4" defer></script>
+  <script src="progresso.js?v=2.4" defer></script>
+  <script src="app.js?v=2.4" defer></script>
 </head>
 <body>
   <main>
-    <header><div class="marca" aria-hidden="true">✓</div><div><h1>Leitor de gabaritos</h1><p>Leia, confira e registre as respostas.</p></div></header>
+    <header><div class="marca" aria-hidden="true">✓</div><div><h1>Leitor de gabaritos</h1><p>Selecione, confira e salve.</p></div></header>
     <div id="status" role="status" aria-live="polite" hidden></div>
     <section id="loginPanel" class="card">
-      <p class="etiqueta">ACESSO DO PROFESSOR</p>
-      <h2>Entre para começar</h2>
-      <p>A lista de alunos e os registros ficam disponíveis após a autenticação.</p>
-      <form id="loginForm">
-        <label for="senha">Senha de acesso</label>
-        <input id="senha" type="password" autocomplete="current-password" required maxlength="512">
-        <button type="submit" id="btnLogin">Entrar</button>
-      </form>
+      <p class="etiqueta">ACESSO DO PROFESSOR</p><h2>Entre para começar</h2>
+      <form id="loginForm"><label for="senha">Senha de acesso</label><input id="senha" type="password" autocomplete="current-password" required maxlength="512"><button type="submit" id="btnLogin">Entrar</button></form>
       <p class="ajuda">A primeira conexão pode levar alguns instantes.</p>
     </section>
-
     <div id="appPanel" hidden>
-      <div class="barra"><span class="selo">Acesso autorizado</span><button id="btnSair" class="link" type="button">Sair</button></div>
-      <section class="card" aria-labelledby="tituloProva">
-        <p class="etiqueta">1 · IDENTIFIQUE A PROVA</p>
-        <h2 id="tituloProva">De quem é este gabarito?</h2>
+      <div class="barra"><span id="etapaAtual" class="selo">1 · Selecione os alunos</span><button id="btnSair" class="link" type="button">Sair</button></div>
+      <div id="resumoFluxo" class="resumo-fluxo" hidden><p id="alunoEmFoco" class="identidade"></p><button id="btnTrocarAlunos" class="link" type="button">Trocar alunos</button></div>
+      <section id="selecaoPanel" class="card" aria-labelledby="tituloProva">
+        <h2 id="tituloProva">De quem é esta prova?</h2>
         <fieldset id="identificacao">
-          <div class="duas-colunas"><div><label for="disciplina">Disciplina</label><select id="disciplina" required></select></div><div><label for="quantidade">Questões objetivas</label><input id="quantidade" type="number" value="5" min="1" max="60" step="1" required></div></div>
-          <label for="turma">Turma</label><select id="turma" required><option value="">Selecione a turma</option></select>
-          <label for="buscaAluno">Buscar aluno</label><input id="buscaAluno" type="search" placeholder="Digite parte do nome" autocomplete="off">
-          <label class="opcao"><input id="somentePendentes" type="checkbox"><span>Mostrar apenas pendentes</span></label>
-          <label for="aluno">Aluno</label><select id="aluno" required><option value="">Selecione o aluno</option></select>
+          <details id="configTurma" open>
+            <summary id="resumoConfiguracao">Configuração da turma</summary>
+            <div class="duas-colunas"><div><label for="disciplina">Disciplina</label><select id="disciplina" required></select></div><div><label for="quantidade">Questões objetivas</label><input id="quantidade" type="number" value="5" min="1" max="60" step="1" required></div></div>
+            <label for="turma">Turma</label><select id="turma" required><option value="">Selecione a turma</option></select>
+          </details>
+          <label class="opcao"><input id="emDupla" type="checkbox"><span>Prova em dupla</span></label>
+          <label for="buscaAluno">Filtrar nomes (opcional)</label><input id="buscaAluno" type="search" placeholder="Digite para filtrar a lista abaixo" autocomplete="off">
+          <label for="aluno">Aluno <span id="rotuloPrimeiro" hidden>1</span></label><select id="aluno" required><option value="">Selecione o aluno</option></select>
+          <div id="segundoAlunoPanel" hidden><label for="aluno2">Aluno 2</label><select id="aluno2"><option value="">Selecione o segundo aluno</option></select></div>
           <p id="progressoTurma" class="ajuda" aria-live="polite">Selecione a turma para consultar o progresso.</p>
-          <button id="btnDesmarcar" class="secundario" type="button" disabled>Desmarcar na lista</button>
-          <p class="ajuda">Desmarcar altera apenas esta lista durante a sessão neste navegador. As respostas gravadas continuam na planilha.</p>
-          <label class="opcao"><input id="modoSequencia" type="checkbox" checked><span>Após salvar, selecionar o próximo aluno pendente</span></label>
+          <details id="ferramentasTurma"><summary>Progresso e opções</summary>
+            <label class="opcao"><input id="somentePendentes" type="checkbox"><span>Mostrar apenas pendentes</span></label>
+            <button id="btnDesmarcar" class="secundario" type="button" disabled>Desmarcar na lista</button>
+            <p class="ajuda">Desmarcar altera a lista desta sessão. As respostas continuam na planilha.</p>
+            <label class="opcao"><input id="modoSequencia" type="checkbox" checked><span>Após salvar, sugerir o próximo pendente</span></label>
+          </details>
         </fieldset>
-        <button id="btnAtualizarAlunos" class="secundario" type="button">Atualizar lista de alunos</button>
-        <button id="btnAtualizarProgresso" class="secundario" type="button">Atualizar progresso da planilha</button>
-        <p id="origemLista" class="ajuda" aria-live="polite">Cadastro de alunos por turma.</p>
+        <div class="acoes-inicio"><button id="btnComecarCamera" type="button">Abrir câmera automática</button><label class="arquivo" for="cameraInput">Usar foto</label><button id="btnManual" class="secundario" type="button">Preencher manualmente</button></div>
+        <details class="atualizacoes"><summary>Atualizar listas</summary><button id="btnAtualizarAlunos" class="secundario" type="button">Atualizar lista de alunos</button><button id="btnAtualizarProgresso" class="secundario" type="button">Atualizar progresso da planilha</button><p id="origemLista" class="ajuda">Cadastro de alunos por turma.</p></details>
       </section>
-      <section class="card" aria-labelledby="tituloFoto">
-        <p class="etiqueta">2 · APONTE A CÂMERA</p>
-        <h2 id="tituloFoto">Mostre o quadro inteiro</h2>
-        <p id="alunoEmFoco" class="identidade">Selecione o aluno antes de abrir a câmera.</p>
-        <p class="ajuda">Inclua a borda e as quatro quinas. Use boa iluminação e deixe a primeira questão no topo. O leitor aceita um único bloco vertical, com A, B, C, D e E da esquerda para a direita.</p>
+      <section id="capturaPanel" class="card" hidden aria-labelledby="tituloFoto">
+        <h2 id="tituloFoto">Enquadre o gabarito</h2>
+        <p class="ajuda">Mostre as quatro quinas, com a primeira questão no topo.</p>
         <button id="btnCamera" type="button">Abrir câmera automática</button>
         <div id="cameraPanel" hidden>
           <div class="camera-visor"><video id="cameraVideo" autoplay muted playsinline aria-label="Câmera ao vivo do gabarito"></video><canvas id="cameraOverlay" aria-hidden="true"></canvas></div>
           <p id="cameraStatus" class="camera-status" role="status">Enquadre as quatro quinas do quadro.</p>
           <progress id="cameraProgresso" max="1" value="0" aria-label="Estabilidade para captura automática"></progress>
-          <div class="duas-colunas"><button id="btnCapturar" type="button" class="secundario">Ler este enquadramento</button><button id="btnFecharCamera" type="button" class="secundario">Fechar câmera</button></div>
+          <div class="duas-colunas"><button id="btnCapturar" type="button" class="secundario">Ler enquadramento</button><button id="btnFecharCamera" type="button" class="secundario">Fechar câmera</button></div>
         </div>
-        <label class="arquivo" for="cameraInput">Usar foto ou escolher imagem</label>
-        <input id="cameraInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
+        <input id="cameraInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Tirar foto ou escolher imagem">
         <div id="fotoPanel" hidden>
           <canvas id="foto" aria-label="Foto do gabarito para conferir a orientação"></canvas>
-          <div class="duas-colunas"><button id="girarEsquerda" class="secundario" type="button">↶ Girar à esquerda</button><button id="girarDireita" class="secundario" type="button">↷ Girar à direita</button></div>
-          <label id="orientacaoPanel" class="confirmacao" hidden><input id="orientacaoManual" type="checkbox"><span>Conferi: questão 1 no topo e alternativas A–E da esquerda para a direita.</span></label>
+          <div class="duas-colunas"><button id="girarEsquerda" class="secundario" type="button">↶ Girar</button><button id="girarDireita" class="secundario" type="button">Girar ↷</button></div>
+          <label id="orientacaoPanel" class="confirmacao" hidden><input id="orientacaoManual" type="checkbox"><span>Conferi: questão 1 no topo e A–E da esquerda para a direita.</span></label>
           <button id="btnLer" type="button">Ler marcações</button>
         </div>
+        <button id="btnManualFoto" class="secundario" type="button">Não consegui ler: preencher manualmente</button>
       </section>
       <section id="revisaoPanel" class="card" hidden aria-labelledby="tituloRevisao">
-        <p class="etiqueta">3 · CONFIRA ANTES DE SALVAR</p>
-        <h2 id="tituloRevisao">Revise as respostas</h2>
-        <p id="identidadeRevisao" class="identidade"></p>
-        <p id="orientacaoRevisao" class="ajuda"></p>
-        <p class="aviso">A leitura é uma sugestão. Confira todas as respostas na foto, inclusive as identificadas como branco ou marcação dupla.</p>
-        <img id="imagemRevisao" alt="Quadro de respostas alinhado, com as bolhas detectadas e os números das questões">
-        <p id="resumoRevisao" aria-live="polite"></p>
-        <div id="listaRespostas"></div>
-        <label class="confirmacao"><input id="confirmado" type="checkbox"><span>Conferi a identificação e todas as respostas na foto.</span></label>
-        <button id="btnSalvar" type="button" disabled>Salvar na planilha e próximo aluno</button>
-        <button id="btnDescartar" type="button" class="secundario">Descartar leitura e tentar outra foto</button>
-        <p class="ajuda">A foto não é gravada no servidor. A nota continua sendo calculada pela sua planilha.</p>
+        <h2 id="tituloRevisao">Confira as respostas</h2>
+        <p id="identidadeRevisao" class="identidade"></p><p id="orientacaoRevisao" class="ajuda"></p>
+        <details id="detalheFoto" class="foto-revisao" open><summary>Foto do gabarito — toque para recolher ou ampliar</summary><img id="imagemRevisao" alt="Gabarito para conferir as respostas"></details>
+        <p id="resumoRevisao" aria-live="polite"></p><div id="listaRespostas"></div>
+        <div class="acoes-revisao">
+          <label class="confirmacao"><input id="confirmado" type="checkbox"><span>Conferi os alunos e todas as respostas.</span></label>
+          <button id="btnSalvar" type="button" disabled>Salvar e próximo</button>
+          <button id="btnDescartar" type="button" class="link">Descartar leitura</button>
+        </div>
       </section>
     </div>
-    <footer>Leitor de gabaritos · versão 2.3</footer>
+    <footer>Leitor de gabaritos · versão 2.4</footer>
   </main>
 </body>
 </html>

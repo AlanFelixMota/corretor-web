@@ -27,9 +27,9 @@
       if (this.corrigido(d,t,a)) this.excecoes.set(key(d,t,a),assinatura); else this.excecoes.delete(key(d,t,a));
       this.persistir();
     }
-    salvo(d,t,a,id) {
+    salvo(d,t,a,id,assinatura=null) {
       const registros = { ...(this.registros.get(JSON.stringify([d,t])) || {}) };
-      registros[a] = "confirmado:"+id;
+      registros[a] = assinatura || "confirmado:"+id;
       this.excecoes.delete(key(d,t,a)); this.registros.set(JSON.stringify([d,t]),registros); this.persistir();
     }
     filtrar(nomes, d, t, busca, pendentes) { return nomes.filter(a => normalize(a).includes(normalize(busca)) && (!pendentes || !this.corrigido(d,t,a))); }

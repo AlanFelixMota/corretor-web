@@ -2,9 +2,9 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const apiBase = window.CORRETOR_CONFIG.apiBase.replace(/\/$/, "");
-  const state = { token: "", roster: {}, draft: null, busy: false, photoReady: false, uncertain: false, progressAvailable: false };
+  const state = { token: "", roster: {}, draft: null, busy: false, photoReady: false, uncertain: false, progressAvailable: false, stage: "identificacao" };
   const progress = new window.CorretorProgresso(sessionStorage);
-  const controls = ["btnLogin", "btnSair", "btnAtualizarAlunos", "btnAtualizarProgresso", "cameraInput", "girarEsquerda", "girarDireita", "btnLer", "btnDescartar", "btnCamera", "btnCapturar"];
+  const controls = ["btnLogin", "btnSair", "btnAtualizarAlunos", "btnAtualizarProgresso", "cameraInput", "girarEsquerda", "girarDireita", "btnLer", "btnDescartar", "btnCamera", "btnCapturar", "btnComecarCamera", "btnManual", "btnManualFoto", "btnTrocarAlunos"];
   let cameraStream = null, cameraTimer = null, cameraGeneration = 0, cameraOpening = false;
   const framingCanvas = document.createElement("canvas");
   let stability = null;
@@ -13,6 +13,21 @@
     $("status").textContent = text;
     $("status").className = type;
     $("status").hidden = false;
+  }
+
+  function participants() {
+    return $("emDupla").checked ? [$("aluno").value, $("aluno2").value] : [$("aluno").value];
+  }
+
+  function setStage(stage) {
+    state.stage = stage;
+    $("selecaoPanel").hidden = stage !== "identificacao";
+    $("capturaPanel").hidden = stage !== "captura";
+    $("revisaoPanel").hidden = stage !== "revisao" || !state.draft;
+    $("resumoFluxo").hidden = stage === "identificacao";
+    $("etapaAtual").textContent = { identificacao:"1 · Selecione os alunos", captura:"2 · Leia a prova", revisao:"3 · Confira e salve" }[stage];
+    document.body.classList.toggle("em-revisao", stage === "revisao");
+    $("appPanel").scrollIntoView({ behavior:"auto", block:"start" });
   }
 
   function syncControls() {
@@ -24,6 +39,10 @@
     $("btnDesmarcar").disabled = state.busy || Boolean(state.draft) || cameraActive || !state.progressAvailable || !progress.assinatura($("disciplina").value, $("turma").value, $("aluno").value);
     $("cameraInput").disabled = state.busy || Boolean(state.draft) || cameraActive;
     $("btnCamera").disabled = state.busy || Boolean(state.draft) || cameraActive;
+    $("btnComecarCamera").disabled = state.busy || Boolean(state.draft) || cameraActive;
+    $("btnTrocarAlunos").disabled = state.busy || Boolean(state.draft);
+    $("btnManual").disabled = state.busy || Boolean(state.draft) || cameraOpening;
+    $("btnManualFoto").disabled = state.busy || Boolean(state.draft) || cameraOpening;
     $("btnCapturar").disabled = state.busy || !cameraStream || !$("cameraVideo").videoWidth;
     $("btnFecharCamera").disabled = !cameraActive;
     $("girarEsquerda").disabled = state.busy || Boolean(state.draft);
@@ -34,7 +53,8 @@
     for (const select of document.querySelectorAll(".resposta select")) select.disabled = state.busy;
     const unresolved = [...document.querySelectorAll(".resposta select")].some((s) => s.value === "REVISAR");
     $("btnSalvar").disabled = state.busy || !state.draft || unresolved || !$("confirmado").checked || state.uncertain;
-    $("btnSalvar").textContent = $("modoSequencia").checked ? "Salvar na planilha e próximo aluno" : "Salvar na planilha";
+    const dupla = (state.draft?.alunos || participants()).length === 2;
+    $("btnSalvar").textContent = dupla ? "Salvar para os dois" : $("modoSequencia").checked ? "Salvar e próximo" : "Salvar na planilha";
   }
 
   async function request(path, options = {}, authenticated = true) {
@@ -77,6 +97,7 @@
     $("identidadeRevisao").textContent = "";
     $("confirmado").checked = false;
     $("orientacaoRevisao").textContent = "";
+    $("detalheFoto").classList.remove("ampliada");
   }
 
   function resetPhoto() {
@@ -98,6 +119,10 @@
     resetDraft(); resetPhoto();
     $("turma").replaceChildren(new Option("Selecione a turma", ""));
     $("aluno").replaceChildren(new Option("Selecione o aluno", ""));
+    $("aluno2").replaceChildren(new Option("Selecione o segundo aluno", ""));
+    $("emDupla").checked = false;
+    $("segundoAlunoPanel").hidden = true;
+    $("rotuloPrimeiro").hidden = true;
     $("disciplina").replaceChildren();
     $("origemLista").textContent = "Cadastro de alunos por turma.";
     $("appPanel").hidden = true;
@@ -106,6 +131,7 @@
     $("buscaAluno").value = "";
     $("progressoTurma").textContent = "Selecione a turma para consultar o progresso.";
     $("alunoEmFoco").textContent = "Selecione o aluno antes de abrir a câmera.";
+    setStage("identificacao");
   }
 
   function renderStudents(selected = $("aluno").value) {
@@ -113,10 +139,18 @@
     const filtered = progress.filtrar(names, d, t, $("buscaAluno").value, $("somentePendentes").checked);
     $("aluno").replaceChildren(new Option("Selecione o aluno", ""), ...filtered.map(a => new Option((progress.corrigido(d,t,a) ? "✓ " : "") + a, a)));
     if (filtered.includes(selected)) $("aluno").value = selected;
+    const segundo = $("aluno2").value;
+    const disponiveis = names.filter(a => a !== $("aluno").value && (!$("somentePendentes").checked || !progress.corrigido(d,t,a)));
+    $("aluno2").replaceChildren(new Option("Selecione o segundo aluno", ""), ...disponiveis.map(a => new Option((progress.corrigido(d,t,a) ? "✓ " : "") + a, a)));
+    if (disponiveis.includes(segundo)) $("aluno2").value = segundo;
+    $("segundoAlunoPanel").hidden = !$("emDupla").checked;
+    $("rotuloPrimeiro").hidden = !$("emDupla").checked;
     const done = names.filter(a => progress.corrigido(d,t,a)).length;
     $("progressoTurma").textContent = t ? `${done} de ${names.length} marcados como corrigidos · ${names.length-done} pendentes` + (state.progressAvailable ? "" : " · progresso não confirmado; atualize a consulta") : "Selecione a turma para consultar o progresso.";
     const aluno = $("aluno").value;
-    $("alunoEmFoco").textContent = aluno ? `${d} · ${t} · ${aluno}` : "Selecione o aluno antes de abrir a câmera.";
+    $("alunoEmFoco").textContent = aluno ? `${d} · ${t} · ${participants().filter(Boolean).join(" e ")}` : "Selecione os alunos antes de abrir a câmera.";
+    $("resumoConfiguracao").textContent = t ? `${d} · ${t} · ${$("quantidade").value} questões` : "Configuração da turma";
+    if (!t) $("configTurma").open = true;
     $("btnDesmarcar").textContent = aluno && progress.corrigido(d,t,aluno) ? "Desmarcar na lista" : "Restaurar marcação";
     syncControls();
   }
@@ -187,11 +221,16 @@
 
   $("turma").addEventListener("change", () => {
     $("buscaAluno").value = "";
+    $("aluno2").value = "";
+    if ($("turma").value) $("configTurma").open = false;
     state.progressAvailable = false; renderStudents("");
     void run(loadProgress);
   });
   $("disciplina").addEventListener("change", () => { state.progressAvailable = false; renderStudents(); void run(loadProgress); });
   $("aluno").addEventListener("change", () => renderStudents());
+  $("aluno2").addEventListener("change", () => renderStudents());
+  $("emDupla").addEventListener("change", () => { $("aluno2").value = ""; renderStudents(); });
+  $("quantidade").addEventListener("change", () => renderStudents());
   $("buscaAluno").addEventListener("input", () => renderStudents());
   $("somentePendentes").addEventListener("change", () => renderStudents());
   $("modoSequencia").addEventListener("change", syncControls);
@@ -227,6 +266,7 @@
       $("foto").getContext("2d").drawImage(img, 0, 0, $("foto").width, $("foto").height);
       state.photoReady = true;
       $("fotoPanel").hidden = false;
+      setStage("captura");
       message("Confira se a primeira questão está no topo e se as alternativas estão na ordem A–E.");
     } finally { URL.revokeObjectURL(url); }
   }));
@@ -260,9 +300,13 @@
   function showReview(data) {
     state.draft = data;
     state.uncertain = false;
-    $("identidadeRevisao").textContent = `${data.disciplina} · ${data.turma} · ${data.aluno}`;
-    $("orientacaoRevisao").textContent = data.orientacao?.origem === "manual" ? "Orientação conferida manualmente. Confira a ordem das questões e alternativas na imagem." : data.orientacao?.rotacao ? "A imagem foi girada automaticamente pela posição da numeração. Confira a orientação na imagem." : "Confira a questão 1 no topo e as alternativas A–E da esquerda para a direita.";
-    $("imagemRevisao").src = data.imagem_revisao;
+    $("revisaoPanel").classList.toggle("manual", data.modo === "manual");
+    const nomes = data.alunos || [data.aluno];
+    $("identidadeRevisao").textContent = `${data.disciplina} · ${data.turma} · ${nomes.join(" e ")}`;
+    $("orientacaoRevisao").textContent = data.modo === "manual" ? "Preenchimento manual: escolha cada resposta conferindo a prova." : data.orientacao?.origem === "manual" ? "Orientação conferida manualmente. Confira a ordem das questões e alternativas." : data.orientacao?.rotacao ? "Imagem alinhada automaticamente. Confira a orientação." : "Confira a imagem e as alternativas marcadas.";
+    $("detalheFoto").hidden = !data.imagem_revisao;
+    $("detalheFoto").open = true;
+    if (data.imagem_revisao) $("imagemRevisao").src = data.imagem_revisao; else $("imagemRevisao").removeAttribute("src");
     $("listaRespostas").replaceChildren();
     for (const detail of data.detalhes) {
       const row = document.createElement("div"); row.className = "resposta";
@@ -278,23 +322,44 @@
       select.addEventListener("change", () => { $("confirmado").checked = false; updateReview(); });
       row.append(label, select, note); $("listaRespostas").append(row);
     }
-    $("revisaoPanel").hidden = false;
+    setStage("revisao");
     $("confirmado").checked = false;
     updateReview();
-    $("revisaoPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function validateIdentity() {
     const quantidade = Number($("quantidade").value);
     if (!$("aluno").value || !$("turma").value || !Number.isInteger(quantidade) || quantidade < 1 || quantidade > 60) throw new Error("Selecione a turma, o aluno e a quantidade correta de questões objetivas.");
+    if ($("emDupla").checked && (!$("aluno2").value || $("aluno2").value === $("aluno").value)) throw new Error("Selecione dois alunos diferentes para a prova em dupla.");
   }
+
+  function identityPayload() {
+    return { disciplina:$("disciplina").value, turma:$("turma").value, aluno:$("aluno").value, alunos:participants(),
+             em_dupla:$("emDupla").checked, quantidade:Number($("quantidade").value) };
+  }
+
+  async function manualReview(reason = "") {
+    validateIdentity();
+    stopCamera();
+    message("Abrindo preenchimento manual…");
+    const data = await request("/leitura_manual", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(identityPayload()) });
+    if (state.photoReady) data.imagem_revisao = $("foto").toDataURL("image/jpeg", .8);
+    showReview(data);
+    message(reason ? "O reconhecimento não foi possível. Preencha as respostas conferindo a prova." : "Escolha a resposta de cada questão e confira os alunos antes de salvar.");
+  }
+  $("btnManual").addEventListener("click", () => run(() => manualReview()));
+  $("btnManualFoto").addEventListener("click", () => run(() => manualReview()));
+  $("imagemRevisao").addEventListener("click", () => $("detalheFoto").classList.toggle("ampliada"));
+  $("btnTrocarAlunos").addEventListener("click", () => { if (state.busy || state.draft) return; stopCamera(); resetPhoto(); setStage("identificacao"); syncControls(); });
 
   async function readPhoto() {
     validateIdentity();
-    const blob = await new Promise((resolve) => $("foto").toBlob(resolve, "image/jpeg", .9));
+    const blob = await new Promise((resolve) => $("foto").toBlob(resolve, "image/jpeg", .86));
     if (!blob) throw new Error("Não consegui preparar a foto. Capture novamente.");
     const form = new FormData();
     for (const id of ["disciplina", "turma", "aluno", "quantidade"]) form.append(id, $(id).value);
+    form.append("alunos", JSON.stringify(participants()));
+    form.append("em_dupla", String($("emDupla").checked));
     form.append("orientacao_confirmada", String($("orientacaoManual").checked));
     form.append("imagem", blob, "gabarito.jpg");
     message("Lendo as marcações… Nenhuma resposta foi gravada ainda.");
@@ -302,6 +367,7 @@
     try { data = await request("/processar_gabarito", { method: "POST", body: form }); }
     catch (error) {
       if (error.code === "ORIENTACAO_DUVIDOSA") { $("orientacaoPanel").hidden = false; $("fotoPanel").scrollIntoView({ behavior:"smooth", block:"start" }); }
+      else if (error.status === 422) { await manualReview(error.message); return; }
       throw error;
     }
     showReview(data);
@@ -342,6 +408,7 @@
     try {
       if (video.readyState >= 2 && video.videoWidth && !state.busy) {
         const scale = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight));
+        video.parentElement.style.width = `min(100%, ${55*video.videoWidth/video.videoHeight}vh)`;
         framingCanvas.width = Math.round(video.videoWidth * scale);
         framingCanvas.height = Math.round(video.videoHeight * scale);
         const context = framingCanvas.getContext("2d", { willReadFrequently: true });
@@ -368,13 +435,14 @@
     }
   }
 
-  $("btnCamera").addEventListener("click", async () => {
+  async function openCamera() {
     if (state.busy || state.draft || cameraStream || cameraOpening) return;
     try { validateIdentity(); } catch (error) { message(error.message, "erro"); return; }
     if (!navigator.mediaDevices?.getUserMedia || !window.CorretorCamera) {
       message("A câmera ao vivo não está disponível neste navegador. Abra o site no Chrome ou Safari, ou use uma foto.", "erro"); return;
     }
     cameraOpening = true;
+    setStage("captura");
     const generation = ++cameraGeneration;
     $("cameraPanel").hidden = false;
     $("cameraStatus").textContent = "Permita o acesso à câmera no navegador…";
@@ -400,7 +468,9 @@
       stopCamera(); syncControls();
       message(error.name === "NotAllowedError" ? "Permita o acesso à câmera nas configurações do navegador ou use uma foto." : "Não consegui abrir a câmera. Feche outros aplicativos que a estejam usando ou use uma foto.", "erro");
     }
-  });
+  }
+  $("btnCamera").addEventListener("click", openCamera);
+  $("btnComecarCamera").addEventListener("click", openCamera);
   $("btnFecharCamera").addEventListener("click", () => { stopCamera(); syncControls(); message("Câmera fechada."); });
   $("btnCapturar").addEventListener("click", () => { void captureCamera(); });
   document.addEventListener("visibilitychange", () => {
@@ -423,21 +493,19 @@
       throw error;
     }
     if (data.status !== "sucesso") throw new Error("A gravação não foi confirmada. Confira a planilha.");
-    const saved = state.draft, name = saved.aluno;
-    progress.salvo(saved.disciplina, saved.turma, name, saved.leitura_id);
+    const saved = state.draft, names = saved.alunos || [saved.aluno], name = names[0];
+    for (const aluno of names) progress.salvo(saved.disciplina, saved.turma, aluno, saved.leitura_id, data.registros?.[aluno]);
     resetDraft(); resetPhoto(); $("buscaAluno").value = "";
-    let aviso = "";
-    try { await loadProgress(); } catch (_) { aviso = " O progresso não pôde ser atualizado; consulte novamente quando a conexão voltar."; }
     const next = $("modoSequencia").checked ? progress.proximo(state.roster[saved.turma] || [], saved.disciplina, saved.turma, name) : "";
+    $("aluno2").value = "";
     renderStudents(next);
-    message(`${data.mensagem}\nAluno: ${name}\nRespostas: ${answers.join(", ")}\n${next ? `Próximo sugerido: ${next}. Confira a identificação e toque em Abrir câmera.` : "Selecione outro aluno ou atualize o progresso para conferir a turma."}${aviso}`, "sucesso");
-    $("aluno").focus();
-    $("status").scrollIntoView({ behavior: "smooth", block: "start" });
+    setStage("identificacao");
+    message(`${data.mensagem} ${next ? "Próximo pendente sugerido abaixo." : "Selecione os próximos alunos."}`, "sucesso");
   }));
 
   $("btnDescartar").addEventListener("click", () => {
     if (!confirm(state.uncertain ? "A gravação pode ter ocorrido. Confira a planilha antes de ler esta prova novamente. Deseja descartar esta revisão?" : "Descartar esta leitura sem salvar?")) return;
-    resetDraft(); syncControls(); message("Leitura descartada. Você pode girar a foto, escolher outra ou ler novamente.");
+    resetDraft(); setStage(state.photoReady ? "captura" : "identificacao"); syncControls(); message("Leitura descartada. Você pode ler outra foto ou preencher manualmente.");
   });
 
   window.addEventListener("beforeunload", (event) => {
